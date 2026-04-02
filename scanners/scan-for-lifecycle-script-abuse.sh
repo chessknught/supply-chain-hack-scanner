@@ -209,4 +209,6 @@ scan_package_json() {
 # Main: inspect package.json in the given directory only (no recursion).
 # ---------------------------------------------------------------------------
 pkg_json="${SCAN_PATH%/}/package.json"
-[[ -f "$pkg_json" ]] && scan_package_json "$pkg_json"
+if [[ -f "$pkg_json" ]]; then
+    scan_package_json "$pkg_json"
+fi
