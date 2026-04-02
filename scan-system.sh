@@ -36,6 +36,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCANNER_SCRIPTS=(
     "$SCRIPT_DIR/scanners/scan-for-axios-hack.sh"
     "$SCRIPT_DIR/scanners/scan-for-lifecycle-script-abuse.sh"
+    "$SCRIPT_DIR/scanners/scan-for-suspicious-domains.sh"
 )
 EXCLUDED_DIR_NAMES=('$Recycle.Bin' 'System Volume Information')
 
@@ -197,7 +198,7 @@ for mount in "${mount_points[@]}"; do
                     clear_progress
 
                     if (( high_count > 0 )); then
-                        printf "  ${RED}Scanning: %s  ✗${RESET}\n" "$fpath"
+                        printf "  ${YELLOW}Scanning: %s  ⚠${RESET}\n" "$fpath"
                     elif (( medium_count > 0 )); then
                         printf "  ${YELLOW}Scanning: %s  ⚠${RESET}\n" "$fpath"
                     else
@@ -207,15 +208,16 @@ for mount in "${mount_points[@]}"; do
                     # Print finding details for this file
                     while IFS= read -r finding_json; do
                         [[ -z "$finding_json" ]] && continue
-                        read -r sev indicator evidence < <(jq -r \
+                        IFS=$'\t' read -r sev indicator evidence < <(jq -r \
                             '[.severity,.indicator,.evidence] | @tsv' \
                             <<< "$finding_json" 2>/dev/null)
                         case "$sev" in
                             HIGH)
-                                printf "    ${RED}⚠ [%s] %s${RESET}\n" "$scanner_name" "$indicator"
+                                printf "    ${YELLOW}⚠ [%s] %s${RESET}\n" "$scanner_name" "$indicator"
+                                printf "      ${YELLOW}%s${RESET}\n" "$evidence"
                                 ;;
                             Medium)
-                                printf "    ${YELLOW}⚠ [%s] %s — requires manual inspection${RESET}\n" "$scanner_name" "$indicator"
+                                printf "    ${YELLOW}⚠ [%s] %s${RESET}\n" "$scanner_name" "$indicator"
                                 printf "      ${YELLOW}%s${RESET}\n" "$evidence"
                                 ;;
                         esac
