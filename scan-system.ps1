@@ -1,8 +1,7 @@
+# © 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+
 [CmdletBinding()]
 param(
-    [ValidateSet('Quiet','Normal','Detailed','Debug')]
-    [string]$VerbosityLevel = 'Detailed',
-
     [switch]$IncludeRemovableDrives,
 
     [switch]$SkipNetworkDrives,
@@ -22,27 +21,6 @@ $ExcludedFolderNames = @(
     'System Volume Information'
 )
 
-function Write-Log {
-    param(
-        [string]$Level,
-        [string]$Message
-    )
-
-    $rank = @{
-        Quiet    = 0
-        Normal   = 1
-        Detailed = 2
-        Debug    = 3
-    }
-
-    if ($rank[$Level] -le $rank[$VerbosityLevel]) {
-        switch ($Level) {
-            'Debug'    { Write-Host "[DEBUG] $Message" -ForegroundColor DarkGray }
-            'Detailed' { Write-Host "[DETAIL] $Message" -ForegroundColor Gray }
-            default    { Write-Host $Message }
-        }
-    }
-}
 
 function Get-SeveritySortValue {
     param([string]$Severity)
@@ -101,6 +79,7 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $resolvedScanners = New-Object System.Collections.Generic.List[string]
 $allFindings = New-Object System.Collections.Generic.List[object]
 $driverErrors = New-Object System.Collections.Generic.List[object]
+$driveFolderCounts = @{}
 
 foreach ($scanner in $ScannerScripts) {
     $scannerPath = $scanner
@@ -121,43 +100,74 @@ if (-not $drives) {
     return
 }
 
-Write-Log -Level 'Normal' -Message ""
-Write-Log -Level 'Normal' -Message "System scanner"
-Write-Log -Level 'Normal' -Message "=============="
-Write-Log -Level 'Normal' -Message ""
+Write-Host ""
+Write-Host "Supply Chain Hack Scanner"
+Write-Host "========================="
+Write-Host "© 2026 Sooke Software — Ted Neustaedter. All rights reserved."
+Write-Host ""
+Write-Host "DISCLAIMER: This tool is provided as-is for informational and defensive security" -ForegroundColor DarkYellow
+Write-Host "purposes only. It does not guarantee complete detection of all supply chain threats." -ForegroundColor DarkYellow
+Write-Host "Results should be reviewed by a qualified professional. Sooke Software and Ted" -ForegroundColor DarkYellow
+Write-Host "Neustaedter accept no liability for actions taken or not taken based on this output." -ForegroundColor DarkYellow
+Write-Host ""
+
+if ($PSStyle -and $PSStyle.Progress) {
+    $PSStyle.Progress.Style = "`e[44;1;97m"   # blue background, bold, white text (PS7+)
+} else {
+    $Host.PrivateData.ProgressBackgroundColor = 'DarkBlue'
+    $Host.PrivateData.ProgressForegroundColor = 'Cyan'
+}
 
 foreach ($drive in $drives) {
     $driveRoot = "$($drive.DeviceID)\"
     $driveLabel = if ($drive.VolumeName) { "$($drive.DeviceID) ($($drive.VolumeName))" } else { $drive.DeviceID }
 
-    Write-Log -Level 'Normal' -Message "Scanning drive $driveLabel ..."
+    Write-Host "Scanning drive $driveLabel ..."
 
     $activityId = [int]([char]$drive.DeviceID.Substring(0,1))
+    $driveFolderCounts[$drive.DeviceID] = 0
 
     Get-AllFoldersBreadthFirst -RootPath $driveRoot | ForEach-Object {
         $folder = $_
+        $driveFolderCounts[$drive.DeviceID]++
 
-        if ($VerbosityLevel -eq 'Debug') {
-            Write-Progress -Id $activityId `
-                -Activity "Scanning $driveLabel" `
-                -Status "Current folder" `
-                -CurrentOperation $folder `
-                -PercentComplete -1
-        }
-
-        if ($VerbosityLevel -eq 'Debug') {
-            Write-Log -Level 'Debug' -Message "Folder: $folder"
-        }
+        Write-Progress -Id $activityId `
+            -Activity "Scanning $driveLabel" `
+            -Status $folder `
+            -PercentComplete -1
 
         foreach ($scanner in $resolvedScanners) {
             $scannerName = Split-Path $scanner -Leaf
 
-            Write-Log -Level 'Detailed' -Message "  [$scannerName] $folder"
-
             try {
-                $results = & $scanner -ScanPath $folder -VerbosityLevel $VerbosityLevel
+                $results = & $scanner -ScanPath $folder
 
                 if ($results) {
+                    # One status line per file, coloured by worst finding in that file
+                    $byPath = $results | Group-Object Path
+                    foreach ($group in $byPath) {
+                        $highProblems   = @($group.Group | Where-Object { $_.Severity -eq 'HIGH' })
+                        $mediumProblems = @($group.Group | Where-Object { $_.Severity -eq 'Medium' })
+                        if ($highProblems.Count -gt 0) {
+                            Write-Host "  Scanning: $($group.Name)  ✗" -ForegroundColor Red
+                            foreach ($r in $highProblems) {
+                                Write-Host "    ⚠ $($r.Indicator)" -ForegroundColor Red
+                            }
+                            foreach ($r in $mediumProblems) {
+                                Write-Host "    ⚠ $($r.Indicator) — requires manual inspection" -ForegroundColor Yellow
+                                Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
+                            }
+                        } elseif ($mediumProblems.Count -gt 0) {
+                            Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
+                            foreach ($r in $mediumProblems) {
+                                Write-Host "    ⚠ $($r.Indicator) — requires manual inspection" -ForegroundColor Yellow
+                                Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
+                            }
+                        } else {
+                            Write-Host "  Scanning: $($group.Name)  ✓" -ForegroundColor Green
+                        }
+                    }
+
                     foreach ($r in $results) {
                         if (-not $r.PSObject.Properties['Drive']) {
                             $r | Add-Member -NotePropertyName Drive -NotePropertyValue $drive.DeviceID
@@ -179,16 +189,12 @@ foreach ($drive in $drives) {
                     Error   = $_.Exception.Message
                 })
 
-                if ($VerbosityLevel -in @('Detailed','Debug')) {
-                    Write-Log -Level 'Debug' -Message "Scanner error in $folder : $($_.Exception.Message)"
-                }
+                Write-Host "  Scanner error in ${folder}: $($_.Exception.Message)" -ForegroundColor DarkGray
             }
         }
     }
 
-    if ($VerbosityLevel -eq 'Debug') {
-        Write-Progress -Id $activityId -Activity "Scanning $driveLabel" -Completed
-    }
+    Write-Progress -Id $activityId -Activity "Scanning $driveLabel" -Completed
 }
 
 $sortedFindings = $allFindings | Sort-Object `
@@ -214,16 +220,21 @@ Write-Host "Per-drive summary" -ForegroundColor Cyan
 Write-Host "=================" -ForegroundColor Cyan
 Write-Host ""
 
+$totalFolders = ($driveFolderCounts.Values | Measure-Object -Sum).Sum
+Write-Host "Folders scanned: $totalFolders" -ForegroundColor Gray
+Write-Host ""
+
 $summary = foreach ($drive in ($drives | Select-Object -ExpandProperty DeviceID)) {
     $driveItems = @($sortedFindings | Where-Object { $_.Drive -eq $drive })
 
     [pscustomobject]@{
-        Drive  = $drive
-        High   = @($driveItems | Where-Object { $_.Severity -eq 'HIGH' }).Count
-        Medium = @($driveItems | Where-Object { $_.Severity -eq 'Medium' }).Count
-        Info   = @($driveItems | Where-Object { $_.Severity -eq 'Info' }).Count
-        Total  = $driveItems.Count
-        Status = if (@($driveItems | Where-Object { $_.Severity -eq 'HIGH' }).Count -gt 0) {
+        Drive   = $drive
+        Folders = $driveFolderCounts[$drive]
+        High    = @($driveItems | Where-Object { $_.Severity -eq 'HIGH' }).Count
+        Medium  = @($driveItems | Where-Object { $_.Severity -eq 'Medium' }).Count
+        Info    = @($driveItems | Where-Object { $_.Severity -eq 'Info' }).Count
+        Total   = $driveItems.Count
+        Status  = if (@($driveItems | Where-Object { $_.Severity -eq 'HIGH' }).Count -gt 0) {
             'ATTENTION NEEDED'
         }
         elseif (@($driveItems | Where-Object { $_.Severity -eq 'Medium' }).Count -gt 0) {

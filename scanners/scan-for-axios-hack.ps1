@@ -1,10 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string]$ScanPath,
-
-    [ValidateSet('Quiet','Normal','Detailed','Debug')]
-    [string]$VerbosityLevel = 'Detailed'
+    [string]$ScanPath
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
@@ -104,9 +101,7 @@ function Test-TextIndicators {
         }
     }
 
-    if ($Text -match '"postinstall"\s*:') {
-        Add-Finding -List $Findings -Severity 'Medium' -Type 'TextIndicator' -Path $Path -PackageName $PackageName -Version $Version -Indicator 'Contains postinstall script' -Evidence 'Matched scripts.postinstall' -Recommendation 'Review whether this install-time script is expected.'
-    }
+
 
     if ($Text -match 'plain-crypto-js') {
         Add-Finding -List $Findings -Severity 'HIGH' -Type 'TextIndicator' -Path $Path -PackageName $PackageName -Version $Version -Indicator 'References plain-crypto-js' -Evidence 'Matched package name text' -Recommendation 'Investigate immediately.'
@@ -121,7 +116,7 @@ $results = New-Object 'System.Collections.Generic.List[object]'
 
 try {
     $files = Get-ChildItem -LiteralPath $ScanPath -File -Force -ErrorAction Stop |
-        Where-Object { $_.Name -in @('package.json', 'package-lock.json') }
+        Where-Object { $_.Name -in @('package.json', 'package-lock.json', 'bower.json') }
 }
 catch {
     $files = @()
@@ -143,6 +138,25 @@ foreach ($file in $files) {
         Test-TextIndicators -Findings $results -Text $text -Path $file.FullName -PackageName $pkgName -Version $pkgVersion
 
         if ($json) {
+            $postinstall = $null
+            if ($json.scripts -and $json.scripts.PSObject.Properties.Name -contains 'postinstall') {
+                $postinstall = [string]$json.scripts.postinstall
+            }
+            if ($postinstall) {
+                $postinstallLine = $null
+                $lines = (Get-Content -LiteralPath $file.FullName -ErrorAction SilentlyContinue)
+                if ($lines) {
+                    for ($i = 0; $i -lt $lines.Count; $i++) {
+                        if ($lines[$i] -match '"postinstall"') {
+                            $postinstallLine = $i + 1
+                            break
+                        }
+                    }
+                }
+                $lineRef = if ($postinstallLine) { " (line $postinstallLine)" } else { '' }
+                Add-Finding -List $results -Severity 'Medium' -Type 'TextIndicator' -Path $file.FullName -PackageName $pkgName -Version $pkgVersion -Indicator 'Contains postinstall script' -Evidence "scripts.postinstall$lineRef`: $postinstall" -Recommendation 'Manually inspect this script to confirm it is not malicious.'
+            }
+
             foreach ($sectionName in @('dependencies','devDependencies','optionalDependencies','peerDependencies')) {
                 $section = $json.$sectionName
                 if (-not $section) { continue }
@@ -181,6 +195,33 @@ foreach ($file in $files) {
                 $isBad = $v -eq $BadPlainCryptoJsVersion
 
                 Add-Finding -List $results -Severity $(if ($isBad) { 'HIGH' } else { 'Medium' }) -Type 'LockfileDependency' -Path $file.FullName -PackageName 'plain-crypto-js' -Version $v -Indicator $(if ($isBad) { 'Lockfile includes malicious plain-crypto-js version' } else { 'Lockfile includes plain-crypto-js' }) -Evidence "package-lock.json: plain-crypto-js@$v" -Recommendation 'Investigate immediately.'
+            }
+        }
+    }
+    elseif ($file.Name -eq 'bower.json') {
+        Test-TextIndicators -Findings $results -Text $text -Path $file.FullName -PackageName $null -Version $null
+
+        if ($json) {
+            $bowerName    = [string]$json.name
+            $bowerVersion = [string]$json.version
+
+            foreach ($sectionName in @('dependencies','devDependencies')) {
+                $section = $json.$sectionName
+                if (-not $section) { continue }
+
+                if ($section.PSObject.Properties.Name -contains 'axios') {
+                    $declaredAxiosVersion = [string]$section.axios
+                    $isBad = $declaredAxiosVersion -match '(^|[^\d])(1\.14\.1|0\.30\.4)([^\d]|$)'
+
+                    Add-Finding -List $results -Severity $(if ($isBad) { 'HIGH' } else { 'Info' }) -Type 'DeclaredDependency' -Path $file.FullName -PackageName 'axios' -Version $declaredAxiosVersion -Indicator $(if ($isBad) { 'Declared known malicious axios version/range' } else { 'Declared axios dependency' }) -Evidence "bower.json dependency: axios = $declaredAxiosVersion" -Recommendation $(if ($isBad) { 'Investigate immediately.' } else { 'Review if needed.' })
+                }
+
+                if ($section.PSObject.Properties.Name -contains 'plain-crypto-js') {
+                    $declaredPlainVersion = [string]$section.'plain-crypto-js'
+                    $isBad = $declaredPlainVersion -match '(^|[^\d])4\.2\.1([^\d]|$)'
+
+                    Add-Finding -List $results -Severity $(if ($isBad) { 'HIGH' } else { 'Medium' }) -Type 'DeclaredDependency' -Path $file.FullName -PackageName 'plain-crypto-js' -Version $declaredPlainVersion -Indicator $(if ($isBad) { 'Declared malicious plain-crypto-js version/range' } else { 'Declared plain-crypto-js dependency' }) -Evidence "bower.json dependency: plain-crypto-js = $declaredPlainVersion" -Recommendation 'Investigate immediately.'
+                }
             }
         }
     }
