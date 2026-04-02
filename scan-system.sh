@@ -33,7 +33,10 @@ done
 
 # ── Config ────────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCANNER_SCRIPTS=("$SCRIPT_DIR/scanners/scan-for-axios-hack.sh")
+SCANNER_SCRIPTS=(
+    "$SCRIPT_DIR/scanners/scan-for-axios-hack.sh"
+    "$SCRIPT_DIR/scanners/scan-for-lifecycle-script-abuse.sh"
+)
 EXCLUDED_DIR_NAMES=('$Recycle.Bin' 'System Volume Information')
 
 # ── Colors (ANSI) ─────────────────────────────────────────────────────────────
@@ -209,10 +212,10 @@ for mount in "${mount_points[@]}"; do
                             <<< "$finding_json" 2>/dev/null)
                         case "$sev" in
                             HIGH)
-                                printf "    ${RED}⚠ %s${RESET}\n" "$indicator"
+                                printf "    ${RED}⚠ [%s] %s${RESET}\n" "$scanner_name" "$indicator"
                                 ;;
                             Medium)
-                                printf "    ${YELLOW}⚠ %s — requires manual inspection${RESET}\n" "$indicator"
+                                printf "    ${YELLOW}⚠ [%s] %s — requires manual inspection${RESET}\n" "$scanner_name" "$indicator"
                                 printf "      ${YELLOW}%s${RESET}\n" "$evidence"
                                 ;;
                         esac

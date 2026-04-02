@@ -13,6 +13,7 @@ $ErrorActionPreference = 'Continue'
 
 $ScannerScripts = @(
     ".\scanners\scan-for-axios-hack.ps1"
+    ".\scanners\scan-for-lifecycle-script-abuse.ps1"
     # ".\scanners\scan-other-thing.ps1"
 )
 
@@ -155,16 +156,16 @@ foreach ($drive in $drives) {
                         if ($highProblems.Count -gt 0) {
                             Write-Host "  Scanning: $($group.Name)  ✗" -ForegroundColor Red
                             foreach ($r in $highProblems) {
-                                Write-Host "    ⚠ $($r.Indicator)" -ForegroundColor Red
+                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Red
                             }
                             foreach ($r in $mediumProblems) {
-                                Write-Host "    ⚠ $($r.Indicator) — requires manual inspection" -ForegroundColor Yellow
+                                Write-Host "    ⚠ [$scannerName] $($r.Indicator) — requires manual inspection" -ForegroundColor Yellow
                                 Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
                             }
                         } elseif ($mediumProblems.Count -gt 0) {
                             Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
                             foreach ($r in $mediumProblems) {
-                                Write-Host "    ⚠ $($r.Indicator) — requires manual inspection" -ForegroundColor Yellow
+                                Write-Host "    ⚠ [$scannerName] $($r.Indicator) — requires manual inspection" -ForegroundColor Yellow
                                 Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
                             }
                         } else {

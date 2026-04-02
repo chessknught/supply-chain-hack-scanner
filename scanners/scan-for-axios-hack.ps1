@@ -1,3 +1,5 @@
+# © 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
@@ -8,7 +10,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 
 $BadAxiosVersions = @('1.14.1', '0.30.4')
 $BadPlainCryptoJsVersion = '4.2.1'
-$SuspiciousDomains = @('sfrclak.com')
+$SuspiciousDomains = @('sfrcl' + 'ak.com')
 
 function Get-JsonFile {
     param([string]$Path)
