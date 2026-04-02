@@ -174,8 +174,9 @@ function Get-PatternHits {
             $hits.Add($entry)
         }
     }
-
-    $hits
+    # Return as a plain .NET array so the caller always receives an array,
+    # regardless of element count.
+    $hits.ToArray()
 }
 
 # ---------------------------------------------------------------------------
@@ -188,7 +189,7 @@ function Get-PatternHits {
 #   4. Otherwise                  → Info
 # ---------------------------------------------------------------------------
 function Get-EffectiveSeverity {
-    param([System.Collections.Generic.List[object]]$Hits)
+    param($Hits)
 
     $highCount   = ($Hits | Where-Object { $_.Severity -eq 'HIGH'   } | Measure-Object).Count
     $mediumCount = ($Hits | Where-Object { $_.Severity -eq 'Medium' } | Measure-Object).Count
@@ -227,7 +228,7 @@ if (Test-Path -LiteralPath $pkgJsonPath -PathType Leaf) {
                 continue
             }
 
-            $hits = Get-PatternHits -ScriptValue $scriptValue
+            $hits = @(Get-PatternHits -ScriptValue $scriptValue)
 
             if ($hits.Count -eq 0) {
                 # Lifecycle hook exists but nothing suspicious was detected — informational.

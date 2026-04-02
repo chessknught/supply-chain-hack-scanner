@@ -14,6 +14,7 @@ $ErrorActionPreference = 'Continue'
 $ScannerScripts = @(
     ".\scanners\scan-for-axios-hack.ps1"
     ".\scanners\scan-for-lifecycle-script-abuse.ps1"
+    ".\scanners\scan-for-suspicious-domains.ps1"
     # ".\scanners\scan-other-thing.ps1"
 )
 
@@ -154,18 +155,19 @@ foreach ($drive in $drives) {
                         $highProblems   = @($group.Group | Where-Object { $_.Severity -eq 'HIGH' })
                         $mediumProblems = @($group.Group | Where-Object { $_.Severity -eq 'Medium' })
                         if ($highProblems.Count -gt 0) {
-                            Write-Host "  Scanning: $($group.Name)  ✗" -ForegroundColor Red
+                            Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
                             foreach ($r in $highProblems) {
-                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Red
+                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
+                                Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
                             }
                             foreach ($r in $mediumProblems) {
-                                Write-Host "    ⚠ [$scannerName] $($r.Indicator) — requires manual inspection" -ForegroundColor Yellow
+                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
                                 Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
                             }
                         } elseif ($mediumProblems.Count -gt 0) {
                             Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
                             foreach ($r in $mediumProblems) {
-                                Write-Host "    ⚠ [$scannerName] $($r.Indicator) — requires manual inspection" -ForegroundColor Yellow
+                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
                                 Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
                             }
                         } else {
