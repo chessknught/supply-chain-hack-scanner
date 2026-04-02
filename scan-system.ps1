@@ -103,7 +103,11 @@ if (-not $drives) {
 Write-Host ""
 Write-Host "Supply Chain Hack Scanner"
 Write-Host "========================="
+$_versionFile = Join-Path $scriptRoot 'VERSION'
+$_version = if (Test-Path -LiteralPath $_versionFile) { (Get-Content -LiteralPath $_versionFile -Raw).Trim() } else { 'unknown' }
+Write-Host "Version $_version"
 Write-Host "© 2026 Sooke Software — Ted Neustaedter. All rights reserved."
+Write-Host "https://sookesoft.com"
 Write-Host ""
 Write-Host "DISCLAIMER: This tool is provided as-is for informational and defensive security" -ForegroundColor DarkYellow
 Write-Host "purposes only. It does not guarantee complete detection of all supply chain threats." -ForegroundColor DarkYellow

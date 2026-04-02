@@ -113,10 +113,14 @@ scanner_errors=()     # each element: "mount|folder|scanner_name|error_message"
 declare -A mount_folder_counts
 
 # ── Header and disclaimer ─────────────────────────────────────────────────────
+VERSION_FILE="$SCRIPT_DIR/VERSION"
+_version=$(tr -d '[:space:]' < "$VERSION_FILE" 2>/dev/null || echo "unknown")
 echo ""
 echo "Supply Chain Hack Scanner"
 echo "========================="
+echo "Version $_version"
 echo "© 2026 Sooke Software — Ted Neustaedter. All rights reserved."
+echo "https://sookesoft.com"
 echo ""
 printf '%bDISCLAIMER: This tool is provided as-is for informational and defensive security%b\n'       "$DARK_YELLOW" "$RESET"
 printf '%bpurposes only. It does not guarantee complete detection of all supply chain threats.%b\n'   "$DARK_YELLOW" "$RESET"
