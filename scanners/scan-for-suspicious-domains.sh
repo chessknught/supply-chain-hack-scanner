@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# © 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+# © 2026 Sooke Software — Ted Neustaedter.
+# Licensed under the GNU General Public License, version 3 or later.
 #
 # scan-for-suspicious-domains.sh — scans a single directory (non-recursive)
 # for suspicious domains, webhooks, and exfiltration patterns.

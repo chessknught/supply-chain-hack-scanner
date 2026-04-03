@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# © 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+# © 2026 Sooke Software — Ted Neustaedter.
+# Licensed under the GNU General Public License, version 3 or later.
 #
 # scan-system.sh — scans all local mount points using registered scanner scripts.
 # Requires: bash 4+, jq
@@ -75,6 +76,7 @@ SCANNER_SCRIPTS=(
     "$SCRIPT_DIR/scanners/scan-for-suspicious-domains.sh"
     "$SCRIPT_DIR/scanners/scan-for-typosquat-packages.sh"
     "$SCRIPT_DIR/scanners/scan-for-dependency-confusion.sh"
+    "$SCRIPT_DIR/scanners/scan-for-credential-theft-behavior.sh"
 )
 EXCLUDED_DIR_NAMES=('$Recycle.Bin' 'System Volume Information')
 
@@ -120,7 +122,7 @@ show_header() {
     printf "${CYAN}  ╔%s╗${RESET}\n" "$border_fill" >/dev/tty
     printf "${CYAN}${BOLD}  ║%s║${RESET}\n" "$padded_title" >/dev/tty
     printf "${CYAN}  ╚%s╝${RESET}\n" "$border_fill" >/dev/tty
-    printf "${GRAY}  © 2026 Sooke Software — Ted Neustaedter. All rights reserved.${RESET}\n" >/dev/tty
+    printf "${GRAY}  © 2026 Sooke Software — Ted Neustaedter. GNU GPL v3.0-or-later.${RESET}\n" >/dev/tty
     printf "${GRAY}  https://sookesoft.com${RESET}\n" >/dev/tty
     printf '\n' >/dev/tty
 }
@@ -498,7 +500,7 @@ if ! $IS_INTERACTIVE; then
     echo "Supply Chain Hack Scanner"
     echo "========================="
     echo "Version $_version"
-    echo "© 2026 Sooke Software — Ted Neustaedter. All rights reserved."
+    echo "© 2026 Sooke Software — Ted Neustaedter. GNU GPL v3.0-or-later."
     echo "https://sookesoft.com"
     echo ""
     printf '%b%s%b\n' "$DARK_YELLOW" "DISCLAIMER: This tool is provided as-is for informational and defensive security" "$RESET"

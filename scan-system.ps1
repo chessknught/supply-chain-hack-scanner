@@ -1,4 +1,5 @@
-# © 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+# © 2026 Sooke Software — Ted Neustaedter.
+# Licensed under the GNU General Public License, version 3 or later.
 
 [CmdletBinding()]
 param(
@@ -42,6 +43,7 @@ $ScannerScripts = @(
     ".\scanners\scan-for-suspicious-domains.ps1"
     ".\scanners\scan-for-typosquat-packages.ps1"
     ".\scanners\scan-for-dependency-confusion.ps1"
+    ".\scanners\scan-for-credential-theft-behavior.ps1"
     # ".\scanners\scan-other-thing.ps1"
 )
 
@@ -65,7 +67,7 @@ function Show-Header {
     Write-Host $topBorder -ForegroundColor DarkCyan
     Write-Host $titleLine -ForegroundColor Cyan
     Write-Host $bottomBorder -ForegroundColor DarkCyan
-    Write-Host "  © 2026 Sooke Software — Ted Neustaedter. All rights reserved." -ForegroundColor DarkGray
+    Write-Host "  © 2026 Sooke Software — Ted Neustaedter. GNU GPL v3.0-or-later." -ForegroundColor DarkGray
     Write-Host "  https://sookesoft.com" -ForegroundColor DarkGray
     Write-Host ""
 }
@@ -514,7 +516,7 @@ if (-not $_isInteractive) {
     Write-Host "Supply Chain Hack Scanner"
     Write-Host "========================="
     Write-Host "Version $_version"
-    Write-Host "© 2026 Sooke Software — Ted Neustaedter. All rights reserved."
+    Write-Host "© 2026 Sooke Software — Ted Neustaedter. GNU GPL v3.0-or-later."
     Write-Host "https://sookesoft.com"
     Write-Host ""
     Write-Host "DISCLAIMER: This tool is provided as-is for informational and defensive security" -ForegroundColor DarkYellow

@@ -1,6 +1,6 @@
 # Supply Chain Hack Scanner
 
-© 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+© 2026 Sooke Software — Ted Neustaedter. Licensed under GNU GPL v3.0 or later.
 
 > **DISCLAIMER:** This tool is provided as-is for informational and defensive security purposes only. It does not guarantee complete detection of all supply chain threats. Results should be reviewed by a qualified professional. Sooke Software and Ted Neustaedter accept no liability for actions taken or not taken based on this output.
 
@@ -204,4 +204,4 @@ This scanner covers a broad set of ecosystems and file types, including npm (`pa
 
 ## License
 
-© 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+This project is licensed under the GNU General Public License, version 3 or any later version. See [LICENSE](LICENSE).
