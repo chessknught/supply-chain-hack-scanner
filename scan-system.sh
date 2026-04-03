@@ -133,8 +133,10 @@ ensure_progress_overlay() {
     (( rows >= 4 )) || return 0
 
     if [[ "$PROGRESS_ROWS" != "$rows" ]] || ! $PROGRESS_SCROLL_REGION_ACTIVE; then
+            printf '\033[s' >&$TTY_FD 2>/dev/null || true
         printf '\033[r' >&$TTY_FD 2>/dev/null || true
         printf '\033[1;%sr' "$(( rows - 1 ))" >&$TTY_FD 2>/dev/null || true
+            printf '\033[u' >&$TTY_FD 2>/dev/null || true
         PROGRESS_ROWS="$rows"
         PROGRESS_SCROLL_REGION_ACTIVE=true
     fi
