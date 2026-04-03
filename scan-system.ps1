@@ -63,57 +63,71 @@ function Show-Header {
     Write-Host ""
 }
 
-# Present a numbered multi-select checklist.
-# Returns the subset of $Items the user selected; all items selected by default.
 function Invoke-ChecklistMenu {
     param(
         [string]$Title,
         [string[]]$Items,
-        [bool[]]$Defaults      # must be same length as $Items
+        [bool[]]$Defaults
     )
 
-    # Build working state
+    if ($Items.Count -eq 0) {
+        return @()
+    }
+
     $selected = for ($i = 0; $i -lt $Items.Count; $i++) { $Defaults[$i] }
+    $cursorIndex = 0
 
     while ($true) {
+        Clear-Host
         Write-Host ""
         Write-Host "  $Title" -ForegroundColor Cyan
         Write-Host "  $('─' * ($Title.Length))" -ForegroundColor DarkCyan
         Write-Host ""
+        Write-Host "  Use Up/Down to move, Space to toggle, A = all, N = none, Enter = confirm." -ForegroundColor DarkYellow
+        Write-Host ""
+
         for ($i = 0; $i -lt $Items.Count; $i++) {
             $box = if ($selected[$i]) { '[x]' } else { '[ ]' }
-            $color = if ($selected[$i]) { 'White' } else { 'DarkGray' }
-            Write-Host ("  {0,2}. $box {1}" -f ($i + 1), $Items[$i]) -ForegroundColor $color
-        }
-        Write-Host ""
-        Write-Host "  Enter number(s) to toggle (e.g. 1 3), [A]ll, [N]one, or [Enter] to confirm: " `
-            -ForegroundColor DarkYellow -NoNewline
-
-        $input = (Read-Host).Trim()
-
-        if ($input -eq '') { break }
-
-        switch -Regex ($input) {
-            '^[Aa]$' {
-                for ($i = 0; $i -lt $selected.Count; $i++) { $selected[$i] = $true }
+            $pointer = if ($i -eq $cursorIndex) { '>' } else { ' ' }
+            $color = if ($i -eq $cursorIndex) {
+                'Cyan'
+            } elseif ($selected[$i]) {
+                'White'
+            } else {
+                'DarkGray'
             }
-            '^[Nn]$' {
-                for ($i = 0; $i -lt $selected.Count; $i++) { $selected[$i] = $false }
+            Write-Host ("  $pointer $box {0}" -f $Items[$i]) -ForegroundColor $color
+        }
+
+        Write-Host ""
+        $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+
+        switch ($key.VirtualKeyCode) {
+            38 {
+                if ($cursorIndex -gt 0) { $cursorIndex-- } else { $cursorIndex = $Items.Count - 1 }
+            }
+            40 {
+                if ($cursorIndex -lt ($Items.Count - 1)) { $cursorIndex++ } else { $cursorIndex = 0 }
+            }
+            32 {
+                $selected[$cursorIndex] = -not $selected[$cursorIndex]
+            }
+            13 {
+                return @(for ($j = 0; $j -lt $Items.Count; $j++) {
+                    if ($selected[$j]) { $Items[$j] }
+                })
             }
             default {
-                foreach ($tok in ($input -split '\s+')) {
-                    if ($tok -match '^\d+$') {
-                        $idx = [int]$tok - 1
-                        if ($idx -ge 0 -and $idx -lt $selected.Count) {
-                            $selected[$idx] = -not $selected[$idx]
-                        }
-                    }
+                switch ($key.Character) {
+                    'a' { for ($i = 0; $i -lt $selected.Count; $i++) { $selected[$i] = $true } }
+                    'A' { for ($i = 0; $i -lt $selected.Count; $i++) { $selected[$i] = $true } }
+                    'n' { for ($i = 0; $i -lt $selected.Count; $i++) { $selected[$i] = $false } }
+                    'N' { for ($i = 0; $i -lt $selected.Count; $i++) { $selected[$i] = $false } }
                 }
             }
         }
     }
 
-    # Return selected items
     for ($i = 0; $i -lt $Items.Count; $i++) {
         if ($selected[$i]) { $Items[$i] }
     }

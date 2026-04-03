@@ -78,7 +78,6 @@ SCANNER_SCRIPTS=(
 )
 EXCLUDED_DIR_NAMES=('$Recycle.Bin' 'System Volume Information')
 
-# ── Colors (ANSI) ─────────────────────────────────────────────────────────────
 RED=$'\033[0;31m'
 YELLOW=$'\033[0;33m'
 GREEN=$'\033[0;32m'
@@ -88,7 +87,6 @@ DARK_YELLOW=$'\033[0;33m'
 BOLD=$'\033[1m'
 RESET=$'\033[0m'
 
-# ── Progress overlay (writes directly to /dev/tty, does not affect stdout) ────
 show_progress() {
     local cols msg padded
     cols=$(tput cols 2>/dev/null || echo 80)
@@ -101,9 +99,6 @@ clear_progress() {
     printf '\r\033[K' >/dev/tty 2>/dev/null || true
 }
 
-# ── Interactive menu helpers ──────────────────────────────────────────────────
-
-# show_header: print the branded header to /dev/tty (does not pollute stdout).
 show_header() {
     local version="$1"
     clear >/dev/tty
@@ -115,59 +110,79 @@ show_header() {
     printf '\n' >/dev/tty
 }
 
-# checklist_menu <title> <items_var_name> <defaults_var_name> → prints selected items, one per line, to stdout.
-# items_var_name and defaults_var_name are names of bash arrays.
-# defaults_var_name holds "true"/"false" entries parallel to items.
 checklist_menu() {
     local title="$1"
     local -n _items="$2"
     local -n _defs="$3"
     local count="${#_items[@]}"
 
-    # Working state: copy defaults
+    (( count == 0 )) && return 0
+
+    local cursor=0
     local selected=()
     for (( i=0; i<count; i++ )); do
         selected[$i]="${_defs[$i]}"
     done
 
     while true; do
+        printf '\033[2J\033[H' >/dev/tty
         printf '\n' >/dev/tty
         printf "${CYAN}  %s${RESET}\n" "$title" >/dev/tty
         printf "${CYAN}  %s${RESET}\n" "$(printf '─%.0s' $(seq 1 ${#title}))" >/dev/tty
         printf '\n' >/dev/tty
+        printf "${DARK_YELLOW}  Use Up/Down to move, Space to toggle, A = all, N = none, Enter = confirm.${RESET}\n" >/dev/tty
+        printf '\n' >/dev/tty
+
         for (( i=0; i<count; i++ )); do
-            local box color
+            local box color pointer
             if [[ "${selected[$i]}" == "true" ]]; then box="[x]"; color="$RESET"
             else                                       box="[ ]"; color="$GRAY"; fi
-            printf "${color}  %3d. %s %s${RESET}\n" $(( i+1 )) "$box" "${_items[$i]}" >/dev/tty
+
+            if (( i == cursor )); then
+                pointer='>'
+                color="$CYAN"
+            else
+                pointer=' '
+            fi
+
+            printf "${color}  %s %s %s${RESET}\n" "$pointer" "$box" "${_items[$i]}" >/dev/tty
         done
-        printf '\n' >/dev/tty
-        printf "${DARK_YELLOW}  Enter number(s) to toggle (e.g. 1 3), [A]ll, [N]one, or Enter to confirm: ${RESET}" >/dev/tty
 
-        local input
-        read -r input </dev/tty
+        local key
+        IFS= read -rsn1 key </dev/tty
 
-        case "$input" in
-            '')  break ;;
-            [Aa]) for (( i=0; i<count; i++ )); do selected[$i]="true";  done ;;
-            [Nn]) for (( i=0; i<count; i++ )); do selected[$i]="false"; done ;;
-            *)
-                for tok in $input; do
-                    if [[ "$tok" =~ ^[0-9]+$ ]]; then
-                        local idx=$(( tok - 1 ))
-                        if (( idx >= 0 && idx < count )); then
-                            if [[ "${selected[$idx]}" == "true" ]]; then
-                                selected[$idx]="false"
-                            else
-                                selected[$idx]="true"
-                            fi
-                        fi
-                    fi
-                done ;;
+        if [[ "$key" == $'\x1b' ]]; then
+            local rest
+            IFS= read -rsn2 rest </dev/tty
+            key+="$rest"
+        fi
+
+        case "$key" in
+            '')
+                break
+                ;;
+            $'\x1b[A')
+                if (( cursor > 0 )); then ((cursor--)); else cursor=$(( count - 1 )); fi
+                ;;
+            $'\x1b[B')
+                if (( cursor < count - 1 )); then ((cursor++)); else cursor=0; fi
+                ;;
+            ' ')
+                if [[ "${selected[$cursor]}" == "true" ]]; then
+                    selected[$cursor]="false"
+                else
+                    selected[$cursor]="true"
+                fi
+                ;;
+            [Aa])
+                for (( i=0; i<count; i++ )); do selected[$i]="true"; done
+                ;;
+            [Nn])
+                for (( i=0; i<count; i++ )); do selected[$i]="false"; done
+                ;;
         esac
     done
 
-    # Emit selected items to stdout
     for (( i=0; i<count; i++ )); do
         [[ "${selected[$i]}" == "true" ]] && echo "${_items[$i]}"
     done
@@ -299,7 +314,7 @@ if $IS_INTERACTIVE; then
 
     printf "${DARK_YELLOW}  DISCLAIMER: This tool is provided as-is for informational and defensive security${RESET}\n" >/dev/tty
     printf "${DARK_YELLOW}  purposes only. It does not guarantee complete detection of all supply chain threats.${RESET}\n" >/dev/tty
-    printf "${DARK_YELLOW}  Detections are based on heuristic pattern matching and may produce false positives \u2014${RESET}\n" >/dev/tty
+    printf "${DARK_YELLOW}  Detections are based on heuristic pattern matching and may produce false positives —${RESET}\n" >/dev/tty
     printf "${DARK_YELLOW}  reported findings should not be treated as confirmed indicators of compromise without${RESET}\n" >/dev/tty
     printf "${DARK_YELLOW}  independent verification. Conversely, the absence of findings does not guarantee that${RESET}\n" >/dev/tty
     printf "${DARK_YELLOW}  a project is free from supply chain risk. Attackers may leave misleading breadcrumbs,${RESET}\n" >/dev/tty
@@ -308,7 +323,6 @@ if $IS_INTERACTIVE; then
     printf "${DARK_YELLOW}  your environment. Sooke Software and Ted Neustaedter accept no liability for actions${RESET}\n" >/dev/tty
     printf "${DARK_YELLOW}  taken or not taken based on this output.${RESET}\n" >/dev/tty
 
-    # — Scanner selection ———————————————————————————————————————————————————
     scanner_labels=()
     scanner_defaults=()
     for s in "${resolved_scanners[@]}"; do
@@ -317,13 +331,11 @@ if $IS_INTERACTIVE; then
     done
 
     mapfile -t chosen_scanner_labels < <(checklist_menu "Select scanners to run" scanner_labels scanner_defaults)
-
     if [[ ${#chosen_scanner_labels[@]} -eq 0 ]]; then
         printf '\n  No scanners selected — nothing to do.\n' >/dev/tty
         exit 0
     fi
 
-    # — Mount point selection ————————————————————————————————————————————————
     mapfile -t all_mounts < <(get_mount_points)
     declare -a mount_labels=()
     declare -a mount_defaults=()
@@ -333,13 +345,11 @@ if $IS_INTERACTIVE; then
     done
 
     mapfile -t chosen_mounts < <(checklist_menu "Select mount points to scan" mount_labels mount_defaults)
-
     if [[ ${#chosen_mounts[@]} -eq 0 ]]; then
         printf '\n  No mount points selected — nothing to do.\n' >/dev/tty
         exit 0
     fi
 
-    # — Options ——————————————————————————————————————————————————————————————
     show_header "$_version"
     printf "${CYAN}  Scan options${RESET}\n" >/dev/tty
     printf "${CYAN}  ────────────${RESET}\n\n" >/dev/tty
@@ -350,17 +360,15 @@ if $IS_INTERACTIVE; then
 
     OUTPUT_JSON=$(string_prompt "Save JSON report to file path" "")
 
-    # — Warning suppression ———————————————————————————————————————————————————
     suppress_defaults=()
     for _ in "${chosen_scanner_labels[@]}"; do suppress_defaults+=("false"); done
     mapfile -t suppressed_scanner_labels < <(checklist_menu \
         "Suppress console warnings for which scanners? (findings still saved to JSON)" \
         chosen_scanner_labels suppress_defaults)
 
-    # — Confirmation ——————————————————————————————————————————————————————————————
     show_header "$_version"
     printf "${CYAN}  Ready to scan${RESET}\n" >/dev/tty
-    printf "${CYAN}  ───────────────${RESET}\n\n" >/dev/tty
+    printf "${CYAN}  ─────────────${RESET}\n\n" >/dev/tty
     printf "${RESET}  Mounts   : %s${RESET}\n" "${chosen_mounts[*]}" >/dev/tty
     printf "${RESET}  Scanners : %s${RESET}\n" "${chosen_scanner_labels[*]}" >/dev/tty
     printf "${RESET}  Verbosity: %s${RESET}\n" "$VERBOSITY" >/dev/tty
@@ -375,7 +383,6 @@ if $IS_INTERACTIVE; then
         exit 0
     fi
 
-    # Apply menu selections
     active_scanners=()
     for lbl in "${chosen_scanner_labels[@]}"; do
         for s in "${resolved_scanners[@]}"; do
@@ -383,8 +390,6 @@ if $IS_INTERACTIVE; then
         done
     done
     active_mounts=("${chosen_mounts[@]}")
-
-    # Build suppressed-scanners lookup (space-separated list of basenames)
     suppressed_scanners_list=" ${suppressed_scanner_labels[*]} "
 
 else
