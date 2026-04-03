@@ -120,6 +120,7 @@ Scanners live in the `scanners/` directory. Each scanner:
 - Receives a single folder path as its only argument
 - Does **not** recurse — `scan-system` handles all recursion
 - Returns findings (PS1: objects to the pipeline; SH: JSONL to stdout)
+- Exists in both PowerShell and Bash variants so the Windows and Linux/macOS drivers provide the same scanner types
 
 ### scan-for-axios-hack
 
@@ -135,6 +136,61 @@ Detects the [axios supply chain compromise](https://socket.dev/blog/supply-chain
 | Declared malicious plain-crypto-js version (4.2.1) | HIGH | package.json, bower.json, package-lock.json |
 | `postinstall` script present | Medium | package.json |
 | Any axios dependency declared | Info | package.json, bower.json, package-lock.json |
+
+### scan-for-lifecycle-script-abuse
+
+Inspects `package.json` lifecycle hooks for suspicious install-time behavior. It checks `preinstall`, `install`, `postinstall`, `prepare`, and `prepublishOnly` scripts.
+
+| Check Type | Severity | Notes |
+|---|---|---|
+| Lifecycle hook present with no suspicious patterns | Info | Still worth reviewing because install hooks execute automatically |
+| One medium-risk pattern | Medium | Examples: shell launchers, `curl`, `wget`, `npm exec`, `npx`, generic URL use |
+| Any high-risk pattern | HIGH | Examples: `eval`, Base64 decoding, LOLBins, hidden execution flags, webhook/bot endpoints |
+| Multiple medium-risk patterns combined | HIGH | Escalates when several suspicious behaviors appear together |
+
+Examples of the patterns it looks for include shell execution, web download utilities, PowerShell web requests, suspicious Windows binaries, obfuscation helpers, child process spawning, hidden execution, and hard-coded exfiltration endpoints such as Discord webhooks or Telegram bot URLs.
+
+### scan-for-suspicious-domains
+
+Scans files in the current folder for suspicious outbound destinations and exfiltration patterns. It inspects common project files such as `package.json`, lockfiles, `.npmrc`, `.env*`, Docker files, and script/source files including `.js`, `.ts`, `.sh`, `.bat`, and `.ps1`.
+
+| Detection Group | Severity | Notes |
+|---|---|---|
+| Known suspicious endpoint only | Medium or HIGH | Includes webhook, callback, tunnel, paste, and raw IP destinations |
+| Exfiltration command only | Medium | Examples: `curl -X POST`, `wget --post-data`, `Invoke-RestMethod -Method Post`, `requests.post()`, `axios.post()` |
+| Endpoint plus sensitive context | HIGH | Escalates when suspicious destinations are combined with env var, token, or credential access |
+| Exfiltration command plus endpoint | HIGH | Stronger evidence of malicious outbound behavior |
+| Sensitive context only | No finding | Avoids noisy results for normal `.env` or token handling without outbound signal |
+
+Notable endpoints include Discord webhooks, Telegram URLs, `webhook.site`, `ngrok`, `requestbin`-style collectors, `interact.sh`, Pastebin-like services, and raw IP address URLs.
+
+### scan-for-typosquat-packages
+
+Looks for dependency names that appear to impersonate popular packages across multiple ecosystems. It inspects package manifests and lockfiles including npm, Python, Go, Rust, and Ruby dependency formats.
+
+| Signal | Typical Severity | Notes |
+|---|---|---|
+| Suspicious publisher scope lookalike | HIGH | Examples: fake scopes resembling major vendors or ecosystems |
+| One-character typo or adjacent transposition | HIGH | High-confidence package impersonation |
+| Two-character similarity or separator collision | Medium | Examples: `react_dom` vs `react-dom`, `dot-env` vs `dotenv` |
+| Bait-word package names | Medium | Examples: names using words like `official`, `secure`, `verified`, `patched` near a known package |
+| Multiple independent signals | HIGH | Escalates when a package matches more than one suspicious pattern |
+
+The scanner also looks for prefix/suffix impersonation and doubled-letter variants such as package names designed to resemble well-known libraries with minor edits.
+
+### scan-for-dependency-confusion
+
+Searches for local signs that a project may be exposed to dependency confusion. It focuses on internal-looking package names and whether the project is properly pinned to private registries.
+
+| Check | Typical Severity | Notes |
+|---|---|---|
+| Internal-looking dependency name with weak private-feed evidence | Medium or HIGH | Uses naming cues such as `internal`, `corp`, `platform`, `auth`, `sdk`, `service`, `agent` |
+| Suspicious dependency seen in both a manifest and a lockfile | Higher confidence | Cross-file confirmation increases severity |
+| Missing npm scoped registry pin or missing global registry override | Medium or HIGH | Flags projects that appear to rely on private packages without clear registry protection |
+| Python public-fallback configuration | Medium or HIGH | Detects `extra-index-url` style fallback behavior |
+| Positive private-feed configuration evidence | Lower risk context | `.npmrc`, `.pypirc`, `pip.conf`, CI files, Docker files, and feed-related env vars are considered |
+
+This scanner covers a broad set of ecosystems and file types, including npm (`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`), Python (`requirements.txt`, `pyproject.toml`, `Pipfile`, `poetry.lock`, `setup.py`), Go (`go.mod`), Rust (`Cargo.toml`), Ruby (`Gemfile`), .NET (`packages.config`, `Directory.Packages.props`, `paket.dependencies`), and Java/Gradle manifests.
 
 ## Adding a New Scanner
 
