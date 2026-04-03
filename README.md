@@ -65,6 +65,24 @@ chmod +x scan-system.sh scanners/scan-for-axios-hack.sh
 ./scan-system.sh --output-json /tmp/scan-results.json
 ```
 
+## Interactive UI
+
+When run without explicit scanner or target-selection arguments, both entry points open an interactive terminal UI so you can choose:
+
+- which scanners to run
+- which drives or mount points to scan
+- the verbosity level
+- whether to write a JSON report
+- which selected scanners should suppress console warnings
+
+### PowerShell interactive flow
+
+![PowerShell interactive scan selection](images/scan-win.jpg)
+
+### Bash interactive flow
+
+![Bash interactive scan selection](images/scan-linux.jpg)
+
 ## Output
 
 While scanning, the overlay bar shows the current folder. The console only prints output when a file worth reporting is found:
