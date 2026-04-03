@@ -37,6 +37,22 @@ An out-of-date version file means the running tool reports the wrong version, wh
 
 ---
 
+## Bash validation from Windows
+
+When validating or running the Bash scanner flow from a Windows workstation, do **not** try to execute the Bash path locally.
+
+Use the repository deployment workflow instead:
+
+1. Deploy with `./deploy.ps1`.
+2. Target host `10.0.0.100`.
+3. Use SSH user `tneustaedter`.
+4. Deploy to remote path `~/test-scan`.
+5. Run Bash validation and execution on the remote Linux host over SSH after deployment.
+
+This is the default validation path for Bash changes in this repository unless the user explicitly asks for a different host or target directory.
+
+---
+
 ## CRITICAL — AV false-positive prevention for scanner pattern strings
 
 This repository's scanner scripts contain regex patterns that match malware indicators (dangerous binaries, obfuscation functions, exfiltration URLs, etc.). Those same literal strings will trigger antivirus / EDR static analysis on the scanner files themselves if they appear verbatim in source.

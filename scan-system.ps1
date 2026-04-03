@@ -45,6 +45,7 @@ $ScannerScripts = @(
     ".\scanners\scan-for-typosquat-packages.ps1"
     ".\scanners\scan-for-dependency-confusion.ps1"
     ".\scanners\scan-for-credential-theft-behavior.ps1"
+    ".\scanners\scan-for-vscode-extension-risks.ps1"
     # ".\scanners\scan-other-thing.ps1"
 )
 

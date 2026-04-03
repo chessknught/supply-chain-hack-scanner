@@ -78,6 +78,7 @@ SCANNER_SCRIPTS=(
     "$SCRIPT_DIR/scanners/scan-for-typosquat-packages.sh"
     "$SCRIPT_DIR/scanners/scan-for-dependency-confusion.sh"
     "$SCRIPT_DIR/scanners/scan-for-credential-theft-behavior.sh"
+    "$SCRIPT_DIR/scanners/scan-for-vscode-extension-risks.sh"
 )
 EXCLUDED_DIR_NAMES=('$Recycle.Bin' 'System Volume Information')
 
@@ -132,8 +133,10 @@ ensure_progress_overlay() {
     (( rows >= 4 )) || return 0
 
     if [[ "$PROGRESS_ROWS" != "$rows" ]] || ! $PROGRESS_SCROLL_REGION_ACTIVE; then
+            printf '\033[s' >&$TTY_FD 2>/dev/null || true
         printf '\033[r' >&$TTY_FD 2>/dev/null || true
         printf '\033[1;%sr' "$(( rows - 1 ))" >&$TTY_FD 2>/dev/null || true
+            printf '\033[u' >&$TTY_FD 2>/dev/null || true
         PROGRESS_ROWS="$rows"
         PROGRESS_SCROLL_REGION_ACTIVE=true
     fi
