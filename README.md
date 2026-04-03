@@ -77,11 +77,11 @@ When run without explicit scanner or target-selection arguments, both entry poin
 
 ### PowerShell interactive flow
 
-![PowerShell interactive scan selection](images/scan-win.jpg)
+![PowerShell interactive scan selection](images/scanning-win.jpg)
 
 ### Bash interactive flow
 
-![Bash interactive scan selection](images/scan-linux.jpg)
+![Bash interactive scan selection](images/scanning-linux.jpg)
 
 ## Output
 
