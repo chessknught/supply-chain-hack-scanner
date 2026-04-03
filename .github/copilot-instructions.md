@@ -53,6 +53,21 @@ This is the default validation path for Bash changes in this repository unless t
 
 ---
 
+## CRITICAL — README scanner documentation must stay in sync
+
+When a new scanner is added, `README.md` must be updated in the same change so the scanner is documented in the scanner list and described consistently with the rest of the repository.
+
+At minimum, when adding a new scanner:
+
+1. Add or update the scanner's section in `README.md`.
+2. Describe what it detects and the typical severity guidance.
+3. Mention the main file types or inputs it inspects when relevant.
+4. Keep the README scanner inventory aligned with the scanner scripts actually registered in `scan-system.ps1` and `scan-system.sh`.
+
+Do not treat README scanner documentation as optional follow-up work. It is part of completing the scanner addition.
+
+---
+
 ## CRITICAL — AV false-positive prevention for scanner pattern strings
 
 This repository's scanner scripts contain regex patterns that match malware indicators (dangerous binaries, obfuscation functions, exfiltration URLs, etc.). Those same literal strings will trigger antivirus / EDR static analysis on the scanner files themselves if they appear verbatim in source.
