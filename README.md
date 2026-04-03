@@ -8,6 +8,11 @@
 
 A cross-platform (PowerShell + Bash) scanner that recursively walks every local drive or mount point and calls pluggable scanner scripts against each folder to detect supply chain compromise indicators in Node.js/Bower project files.
 
+Why was this written in powershell and bash scripts instead of python, rust or something 
+like that?  I'll give you one guess, look at the requirements, the only requirements to run
+them are powershell for Windows, and bash + jq for Linux/macOS. Very low supply-chain risk.  LOL  Ya it's a bit of a nuisance having two code bases, but the tradeoff kinda makes sense
+given the purpose of the tool  :)
+
 ## Features
 
 - Scans every local drive (Windows) or mount point (Linux/macOS)

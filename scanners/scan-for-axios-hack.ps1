@@ -3,7 +3,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string]$ScanPath
+    [string]$ScanPath,
+
+    [int]$VerbosityLevel = 0
 )
 
 $ErrorActionPreference = 'SilentlyContinue'
