@@ -181,8 +181,10 @@ yes_no() {
     printf "${DARK_YELLOW}  %s %s : ${RESET}" "$prompt" "$hint" >/dev/tty
     local r
     read -r r </dev/tty
-    [[ -z "$r" ]] && r="$default"
-    [[ "$r" =~ ^[Yy] ]] && return 0 || return 1
+    if [[ -z "$r" ]]; then
+        [[ "$default" == "true" ]] && return 0 || return 1
+    fi
+    [[ "$r" =~ ^([Yy]|[Yy][Ee][Ss])$ ]] && return 0 || return 1
 }
 
 # string_prompt <prompt> <default> → echoes the entered value (or default) to stdout.

@@ -182,19 +182,19 @@ function Get-SeveritySortValue {
 }
 
 function Get-DriveList {
-    $drives = Get-CimInstance Win32_LogicalDisk | Where-Object {
+    $driveList = Get-CimInstance Win32_LogicalDisk | Where-Object {
         $_.DriveType -in 2, 3, 4
     }
 
     if (-not $IncludeRemovableDrives) {
-        $drives = $drives | Where-Object { $_.DriveType -ne 2 }
+        $driveList = $driveList | Where-Object { $_.DriveType -ne 2 }
     }
 
     if ($SkipNetworkDrives) {
-        $drives = $drives | Where-Object { $_.DriveType -ne 4 }
+        $driveList = $driveList | Where-Object { $_.DriveType -ne 4 }
     }
 
-    $drives | Sort-Object DeviceID
+    $driveList | Sort-Object DeviceID
 }
 
 function Get-AllFoldersBreadthFirst {
@@ -247,6 +247,8 @@ foreach ($s in $ScannerScripts) {
     if (Test-Path -LiteralPath $p) { $allAvailableScanners.Add((Resolve-Path -LiteralPath $p).Path) }
 }
 
+$targetDrives = @()
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 if ($_isInteractive) {
     Show-Header $_version
@@ -298,10 +300,12 @@ if ($_isInteractive) {
         return
     }
 
-    # Map chosen drive labels back to DeviceID list
+    # Map chosen drive labels back to drive objects and DeviceID strings
+    $chosenDrives   = [System.Collections.Generic.List[object]]::new()
     $chosenDriveIds = [System.Collections.Generic.List[string]]::new()
     for ($i = 0; $i -lt $driveLabels.Count; $i++) {
         if ($chosenDriveLabels -contains $driveLabels[$i]) {
+            $chosenDrives.Add($allDrives[$i])
             $chosenDriveIds.Add($allDrives[$i].DeviceID)
         }
     }
@@ -357,8 +361,7 @@ if ($_isInteractive) {
     $script:_suppressedScanners = [System.Collections.Generic.HashSet[string]]::new(
         [string[]]$suppressedLabels, [System.StringComparer]::OrdinalIgnoreCase)
 
-    # Restrict drive enumeration to chosen drives
-    $script:_chosenDriveIds = $chosenDriveIds
+    $targetDrives = @($chosenDrives.ToArray())
 }
 else {
     # ── Non-interactive: respect CLI flags ────────────────────────────────────
@@ -380,14 +383,22 @@ else {
         $allAvailableScanners | ForEach-Object { $resolvedScanners.Add($_) }
     }
 
-    $script:_chosenDriveIds = @()
+    $chosenDriveIds = @()
     if ($Drives -ne '') {
-        $script:_chosenDriveIds = @($Drives -split ',' | ForEach-Object { $_.Trim().TrimEnd('\') } | Where-Object { $_ })
+        $chosenDriveIds = @($Drives -split ',' | ForEach-Object { $_.Trim().TrimEnd('\') } | Where-Object { $_ })
     }
 
     $script:_suppressedScanners = [System.Collections.Generic.HashSet[string]]::new(
         [string[]]($SuppressWarnings -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }),
         [System.StringComparer]::OrdinalIgnoreCase)
+
+    $targetDrives = Get-DriveList
+    if ($chosenDriveIds -and @($chosenDriveIds).Count -gt 0) {
+        $chosenSet = [System.Collections.Generic.HashSet[string]]::new(
+            [string[]]($chosenDriveIds | ForEach-Object { $_.TrimEnd('\') }),
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $targetDrives = @($targetDrives | Where-Object { $_ -and $_.DeviceID -and $chosenSet.Contains($_.DeviceID.TrimEnd('\')) })
+    }
 }
 
 # ── Progress-bar style ────────────────────────────────────────────────────────
@@ -398,16 +409,15 @@ if ($PSStyle -and $PSStyle.Progress) {
     try { $Host.PrivateData.ProgressForegroundColor = 'Cyan'     }  catch {}
 }
 
-# ── Final drive list ──────────────────────────────────────────────────────────
-$drives = Get-DriveList
-
-if ($script:_chosenDriveIds -and $script:_chosenDriveIds.Count -gt 0) {
-    $chosenSet = @($script:_chosenDriveIds | ForEach-Object { $_.TrimEnd('\') })
-    $drives = @($drives | Where-Object { $chosenSet -contains $_.DeviceID.TrimEnd('\') })
+if (-not $targetDrives -or @($targetDrives).Count -eq 0) {
+    Write-Host "No drives found to scan." -ForegroundColor Yellow
+    return
 }
 
-if (-not $drives -or @($drives).Count -eq 0) {
-    Write-Host "No drives found to scan." -ForegroundColor Yellow
+$targetDrives = @($targetDrives | Where-Object { $_ -and $_.PSObject.Properties['DeviceID'] -and -not [string]::IsNullOrWhiteSpace([string]$_.DeviceID) })
+
+if (-not $targetDrives -or @($targetDrives).Count -eq 0) {
+    Write-Host "No valid drives found to scan." -ForegroundColor Yellow
     return
 }
 
@@ -436,14 +446,25 @@ if (-not $_isInteractive) {
 Write-Host ""
 Write-Host "Starting scan — $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
 Write-Host "Scanners  : $(($resolvedScanners | ForEach-Object { Split-Path $_ -Leaf }) -join ', ')" -ForegroundColor DarkGray
-Write-Host "Drives    : $((@($drives | ForEach-Object { $_.DeviceID })) -join ', ')" -ForegroundColor DarkGray
+Write-Host "Drives    : $((@($targetDrives | ForEach-Object { $_.DeviceID })) -join ', ')" -ForegroundColor DarkGray
 Write-Host ""
 
 $allFindings    = New-Object System.Collections.Generic.List[object]
 $driverErrors   = New-Object System.Collections.Generic.List[object]
 $driveFolderCounts = @{}
 
-foreach ($drive in $drives) {
+# Pre-compute which scanners accept -VerbosityLevel (avoids a parameter-binding
+# error at runtime if a scanner was written before the parameter was standardised).
+$_scannerVerbositySupport = @{}
+foreach ($_s in $resolvedScanners) {
+    try {
+        $_scannerVerbositySupport[$_s] = (Get-Command $_s -ErrorAction Stop).Parameters.ContainsKey('VerbosityLevel')
+    } catch {
+        $_scannerVerbositySupport[$_s] = $false
+    }
+}
+
+foreach ($drive in $targetDrives) {
     $driveRoot = "$($drive.DeviceID)\"
     $driveLabel = if ($drive.VolumeName) { "$($drive.DeviceID) ($($drive.VolumeName))" } else { $drive.DeviceID }
 
@@ -466,7 +487,9 @@ foreach ($drive in $drives) {
             $isSuppressed = $script:_suppressedScanners.Contains($scannerName)
 
             try {
-                $results = & $scanner -ScanPath $folder -VerbosityLevel $VerbosityLevel
+                $scanArgs = @{ ScanPath = $folder }
+                if ($_scannerVerbositySupport[$scanner]) { $scanArgs['VerbosityLevel'] = $VerbosityLevel }
+                $results = & $scanner @scanArgs
 
                 if ($results) {
                     # One status line per file, coloured by worst finding in that file
@@ -553,7 +576,7 @@ $totalFolders = ($driveFolderCounts.Values | Measure-Object -Sum).Sum
 Write-Host "Folders scanned: $totalFolders" -ForegroundColor Gray
 Write-Host ""
 
-$summary = foreach ($drive in ($drives | Select-Object -ExpandProperty DeviceID)) {
+$summary = foreach ($drive in ($targetDrives | Select-Object -ExpandProperty DeviceID)) {
     $driveItems = @($sortedFindings | Where-Object { $_.Drive -eq $drive })
 
     [pscustomobject]@{
@@ -591,7 +614,7 @@ if ($OutputJson) {
         DriverScript        = $MyInvocation.MyCommand.Path
         ScannerScripts      = @($resolvedScanners | ForEach-Object { Split-Path $_ -Leaf })
         SuppressedScanners  = @($script:_suppressedScanners)
-        Drives              = @($drives | ForEach-Object { $_.DeviceID })
+        Drives              = @($targetDrives | ForEach-Object { $_.DeviceID })
         VerbosityLevel      = $VerbosityLevel
         Findings            = @($sortedFindings)
         PerDriveSummary  = @($summary)
