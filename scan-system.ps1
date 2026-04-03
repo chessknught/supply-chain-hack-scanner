@@ -74,7 +74,10 @@ function Invoke-ChecklistMenu {
         return @()
     }
 
-    $selected = for ($i = 0; $i -lt $Items.Count; $i++) { $Defaults[$i] }
+    $selected = New-Object 'bool[]' $Items.Count
+    for ($i = 0; $i -lt $Items.Count; $i++) {
+        $selected[$i] = [bool]$Defaults[$i]
+    }
     $cursorIndex = 0
 
     while ($true) {
@@ -160,26 +163,40 @@ function Invoke-SingleChoiceMenu {
         [string[]]$Items,
         [int]$DefaultIndex = 0
     )
+
+    if ($Items.Count -eq 0) {
+        return $null
+    }
+
+    $cursorIndex = if ($DefaultIndex -ge 0 -and $DefaultIndex -lt $Items.Count) { $DefaultIndex } else { 0 }
+
     while ($true) {
+        Clear-Host
         Write-Host ""
         Write-Host "  $Title" -ForegroundColor Cyan
         Write-Host "  $('─' * ($Title.Length))" -ForegroundColor DarkCyan
         Write-Host ""
+        Write-Host "  Use Up/Down to move, Enter to confirm." -ForegroundColor DarkYellow
+        Write-Host ""
         for ($i = 0; $i -lt $Items.Count; $i++) {
-            $marker = if ($i -eq $DefaultIndex) { '>' } else { ' ' }
-            $color  = if ($i -eq $DefaultIndex) { 'White' } else { 'DarkGray' }
-            Write-Host ("  $marker {0,2}. {1}" -f ($i + 1), $Items[$i]) -ForegroundColor $color
+            $marker = if ($i -eq $cursorIndex) { '>' } else { ' ' }
+            $color  = if ($i -eq $cursorIndex) { 'Cyan' } else { 'DarkGray' }
+            Write-Host ("  $marker {0}" -f $Items[$i]) -ForegroundColor $color
         }
         Write-Host ""
-        Write-Host "  Enter number (or [Enter] for default): " `
-            -ForegroundColor DarkYellow -NoNewline
-        $r = (Read-Host).Trim()
-        if ($r -eq '') { return $Items[$DefaultIndex] }
-        if ($r -match '^\d+$') {
-            $idx = [int]$r - 1
-            if ($idx -ge 0 -and $idx -lt $Items.Count) { return $Items[$idx] }
+
+        $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+        switch ($key.VirtualKeyCode) {
+            38 {
+                if ($cursorIndex -gt 0) { $cursorIndex-- } else { $cursorIndex = $Items.Count - 1 }
+            }
+            40 {
+                if ($cursorIndex -lt ($Items.Count - 1)) { $cursorIndex++ } else { $cursorIndex = 0 }
+            }
+            13 {
+                return $Items[$cursorIndex]
+            }
         }
-        Write-Host "  Invalid selection — please try again." -ForegroundColor Red
     }
 }
 
@@ -235,6 +252,39 @@ function Get-AllFoldersBreadthFirst {
         catch {
         }
     }
+}
+
+function Show-ProgressLine {
+    param([string]$Text)
+
+    try {
+        $width = [Math]::Max(20, $Host.UI.RawUI.WindowSize.Width)
+    }
+    catch {
+        $width = 80
+    }
+
+    $contentWidth = [Math]::Max(1, $width - 1)
+    $displayText = if ($Text.Length -gt $contentWidth) {
+        $Text.Substring(0, $contentWidth)
+    }
+    else {
+        $Text.PadRight($contentWidth)
+    }
+
+    Write-Host ("`r$displayText") -NoNewline -BackgroundColor DarkBlue -ForegroundColor White
+}
+
+function Clear-ProgressLine {
+    try {
+        $width = [Math]::Max(20, $Host.UI.RawUI.WindowSize.Width)
+    }
+    catch {
+        $width = 80
+    }
+
+    $blank = ' ' * [Math]::Max(1, $width - 1)
+    Write-Host ("`r$blank`r") -NoNewline
 }
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -350,12 +400,28 @@ if ($_isInteractive) {
     Write-Host "  Ready to scan" -ForegroundColor Cyan
     Write-Host "  ─────────────" -ForegroundColor DarkCyan
     Write-Host ""
-    Write-Host "  Drives   : $($chosenDriveIds -join ', ')" -ForegroundColor White
-    Write-Host "  Scanners : $($chosenLabels -join ', ')"   -ForegroundColor White
-    Write-Host "  Verbosity: $VerbosityLevel"               -ForegroundColor White
-    if ($suppressedLabels.Count -gt 0) {
-        Write-Host "  Suppress : $($suppressedLabels -join ', ')" -ForegroundColor DarkGray
+
+    Write-Host "  Drives" -ForegroundColor White
+    Write-Host "  ------" -ForegroundColor DarkGray
+    foreach ($driveId in $chosenDriveIds) {
+        Write-Host "   - $driveId" -ForegroundColor White
     }
+    Write-Host ""
+
+    Write-Host "  Scanners" -ForegroundColor White
+    Write-Host "  --------" -ForegroundColor DarkGray
+    foreach ($label in $chosenLabels) {
+        $suffix = if ($suppressedLabels -contains $label) { ' (no warnings)' } else { '' }
+        Write-Host "   - $label$suffix" -ForegroundColor White
+    }
+    Write-Host ""
+
+    $verbosityLabel = if ($VerbosityLevel -eq 1) {
+        'Verbose (per-scanner debug output)'
+    } else {
+        'Quiet (findings only)'
+    }
+    Write-Host "  Verbosity: $verbosityLabel" -ForegroundColor White
     if ($OutputJson) { Write-Host "  JSON out : $OutputJson" -ForegroundColor White }
     Write-Host ""
 
@@ -480,21 +546,13 @@ foreach ($_s in $resolvedScanners) {
 
 foreach ($drive in $targetDrives) {
     $driveRoot = "$($drive.DeviceID)\"
-    $driveLabel = if ($drive.VolumeName) { "$($drive.DeviceID) ($($drive.VolumeName))" } else { $drive.DeviceID }
-
-    Write-Host "Scanning drive $driveLabel ..."
-
-    $activityId = [int]([char]$drive.DeviceID.Substring(0,1))
     $driveFolderCounts[$drive.DeviceID] = 0
 
     Get-AllFoldersBreadthFirst -RootPath $driveRoot | ForEach-Object {
         $folder = $_
         $driveFolderCounts[$drive.DeviceID]++
 
-        Write-Progress -Id $activityId `
-            -Activity "Scanning $driveLabel" `
-            -Status $folder `
-            -PercentComplete -1
+        Show-ProgressLine -Text $folder
 
         foreach ($scanner in $resolvedScanners) {
             $scannerName = Split-Path $scanner -Leaf
@@ -506,6 +564,8 @@ foreach ($drive in $targetDrives) {
                 $results = & $scanner @scanArgs
 
                 if ($results) {
+                    Clear-ProgressLine
+
                     # One status line per file, coloured by worst finding in that file
                     $byPath = $results | Group-Object Path
                     foreach ($group in $byPath) {
@@ -548,6 +608,8 @@ foreach ($drive in $targetDrives) {
                 }
             }
             catch {
+                Clear-ProgressLine
+
                 $driverErrors.Add([pscustomobject]@{
                     Drive   = $drive.DeviceID
                     Folder  = $folder
@@ -559,9 +621,9 @@ foreach ($drive in $targetDrives) {
             }
         }
     }
-
-    Write-Progress -Id $activityId -Activity "Scanning $driveLabel" -Completed
 }
+
+Clear-ProgressLine
 
 $sortedFindings = $allFindings | Sort-Object `
     @{ Expression = { Get-SeveritySortValue $_.Severity } }, `

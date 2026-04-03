@@ -220,30 +220,48 @@ single_choice_menu() {
     local default_idx="$3"
     local count="${#_sc_items[@]}"
 
+    (( count == 0 )) && return 0
+
+    local cursor="$default_idx"
+    if (( cursor < 0 || cursor >= count )); then
+        cursor=0
+    fi
+
     while true; do
+        printf '\033[2J\033[H' >/dev/tty
         printf '\n' >/dev/tty
         printf "${CYAN}  %s${RESET}\n" "$title" >/dev/tty
         printf "${CYAN}  %s${RESET}\n" "$(printf '─%.0s' $(seq 1 ${#title}))" >/dev/tty
         printf '\n' >/dev/tty
+        printf "${DARK_YELLOW}  Use Up/Down to move, Enter to confirm.${RESET}\n" >/dev/tty
+        printf '\n' >/dev/tty
         for (( i=0; i<count; i++ )); do
             local marker color
-            if (( i == default_idx )); then marker=">"; color="$RESET"
-            else                            marker=" "; color="$GRAY"; fi
-            printf "${color}  %s %3d. %s${RESET}\n" "$marker" $(( i+1 )) "${_sc_items[$i]}" >/dev/tty
+            if (( i == cursor )); then marker=">"; color="$CYAN"
+            else                      marker=" "; color="$GRAY"; fi
+            printf "${color}  %s %s${RESET}\n" "$marker" "${_sc_items[$i]}" >/dev/tty
         done
-        printf '\n' >/dev/tty
-        printf "${DARK_YELLOW}  Enter number (or Enter for default): ${RESET}" >/dev/tty
-        local r
-        read -r r </dev/tty
-        [[ -z "$r" ]] && echo "${_sc_items[$default_idx]}" && return
-        if [[ "$r" =~ ^[0-9]+$ ]]; then
-            local idx=$(( r - 1 ))
-            if (( idx >= 0 && idx < count )); then
-                echo "${_sc_items[$idx]}"
-                return
-            fi
+
+        local key
+        IFS= read -rsn1 key </dev/tty
+        if [[ "$key" == $'\x1b' ]]; then
+            local rest
+            IFS= read -rsn2 rest </dev/tty
+            key+="$rest"
         fi
-        printf "${RED}  Invalid selection — please try again.${RESET}\n" >/dev/tty
+
+        case "$key" in
+            '')
+                echo "${_sc_items[$cursor]}"
+                return
+                ;;
+            $'\x1b[A')
+                if (( cursor > 0 )); then ((cursor--)); else cursor=$(( count - 1 )); fi
+                ;;
+            $'\x1b[B')
+                if (( cursor < count - 1 )); then ((cursor++)); else cursor=0; fi
+                ;;
+        esac
     done
 }
 
@@ -369,12 +387,34 @@ if $IS_INTERACTIVE; then
     show_header "$_version"
     printf "${CYAN}  Ready to scan${RESET}\n" >/dev/tty
     printf "${CYAN}  ─────────────${RESET}\n\n" >/dev/tty
-    printf "${RESET}  Mounts   : %s${RESET}\n" "${chosen_mounts[*]}" >/dev/tty
-    printf "${RESET}  Scanners : %s${RESET}\n" "${chosen_scanner_labels[*]}" >/dev/tty
-    printf "${RESET}  Verbosity: %s${RESET}\n" "$VERBOSITY" >/dev/tty
-    if [[ ${#suppressed_scanner_labels[@]} -gt 0 ]]; then
-        printf "${GRAY}  Suppress : %s${RESET}\n" "${suppressed_scanner_labels[*]}" >/dev/tty
+
+    printf "${RESET}  Mounts${RESET}\n" >/dev/tty
+    printf "${GRAY}  ------${RESET}\n" >/dev/tty
+    for mount in "${chosen_mounts[@]}"; do
+        printf "${RESET}   - %s${RESET}\n" "$mount" >/dev/tty
+    done
+    printf '\n' >/dev/tty
+
+    printf "${RESET}  Scanners${RESET}\n" >/dev/tty
+    printf "${GRAY}  --------${RESET}\n" >/dev/tty
+    for scanner_label in "${chosen_scanner_labels[@]}"; do
+        scanner_suffix=""
+        for suppressed_label in "${suppressed_scanner_labels[@]}"; do
+            if [[ "$suppressed_label" == "$scanner_label" ]]; then
+                scanner_suffix=" (no warnings)"
+                break
+            fi
+        done
+        printf "${RESET}   - %s%s${RESET}\n" "$scanner_label" "$scanner_suffix" >/dev/tty
+    done
+    printf '\n' >/dev/tty
+
+    if [[ "$VERBOSITY" == "1" ]]; then
+        verbosity_label="Verbose (per-scanner debug output)"
+    else
+        verbosity_label="Quiet (findings only)"
     fi
+    printf "${RESET}  Verbosity: %s${RESET}\n" "$verbosity_label" >/dev/tty
     [[ -n "$OUTPUT_JSON" ]] && printf "${RESET}  JSON out : %s${RESET}\n" "$OUTPUT_JSON" >/dev/tty
     printf '\n' >/dev/tty
 
