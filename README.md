@@ -221,6 +221,21 @@ Detects local indicators of obfuscation, encoded payloads, staged loaders, downl
 
 The scanner covers `package.json`, lockfiles, `.npmrc`, `.env*`, Docker and build files, and a broad set of script and source extensions including JavaScript, TypeScript, Python, shell, PowerShell, .NET, Go, YAML, and JSON. Severity increases when encoding, dynamic execution, downloader logic, staging, or hidden execution appear together in the same file.
 
+### scan-for-vscode-extension-risks
+
+Detects local heuristics that suggest a folder is a VS Code or Open VSX extension with suspicious activation, risky lifecycle scripts, broad workspace interaction, credential access, outbound behavior, persistence-style activity, or suspicious packaging clues. The scanner is intentionally conservative when a folder does not clearly look like an extension project.
+
+| Detection Group | Typical Severity | Notes |
+|---|---|---|
+| Extension manifest markers only | Info | Looks for `engines.vscode`, `activationEvents`, `contributes`, `main`, `publisher`, `displayName`, `extensionKind`, `capabilities`, and related extension metadata |
+| Broad or eager activation | Info or Medium | Examples: `*`, `onStartupFinished`, workspace-wide activation patterns, or many activation events combined |
+| Lifecycle script abuse in extension builds | Medium or HIGH | Flags `preinstall`, `install`, `postinstall`, `prepare`, `prepublishOnly`, `vscode:prepublish`, `compile`, `watch`, and `package` when they include downloaders, encoded shell launches, inline commands, LOLBins, or webhook endpoints |
+| Extension API use plus network or secret access | Medium or HIGH | Examples: `vscode.workspace.findFiles`, `vscode.workspace.fs`, `vscode.commands.executeCommand`, terminal automation, outbound requests, secret-store paths, or environment token access in the same file |
+| Credential harvesting or exfiltration behavior | HIGH | Escalates when workspace or user-profile access combines with outbound logic, storage inspection, token collection, or suspicious endpoints |
+| Obfuscation, staged execution, or suspicious packaging clues | Medium or HIGH | Examples: Base64 helpers, `eval`, child-process execution, encoded blobs, bundled executables, or `.vscodeignore` exclusion patterns that may reduce package review visibility |
+
+The scanner inspects extension-adjacent files in the current folder only, including `package.json`, lockfiles, entry-point files such as `extension.js` or `main.ts`, common script and source files, configuration files, `.vscodeignore`, `.npmrc`, `.env*`, `README.md`, `CHANGELOG.md`, and `LICENSE`. It uses weighted scoring so combinations like broad activation plus risky scripts, or VS Code API access plus credential and outbound behavior, raise severity.
+
 ## Adding a New Scanner
 
 1. Create `scanners/my-scanner.ps1` (and/or `scanners/my-scanner.sh`)
