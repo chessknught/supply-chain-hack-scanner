@@ -2,15 +2,40 @@
 
 [CmdletBinding()]
 param(
+    # ── Non-interactive / CI flags ──────────────────────────────────────────
+    # When any of these are supplied the interactive menu is skipped entirely.
+
     [switch]$IncludeRemovableDrives,
 
     [switch]$SkipNetworkDrives,
 
-    [string]$OutputJson = ""
+    [string]$OutputJson = "",
+
+    # Comma-separated leaf names of scanner scripts to run, e.g.
+    #   -Scanners "scan-for-axios-hack.ps1,scan-for-typosquat-packages.ps1"
+    # Omit to run all registered scanners (or to be prompted interactively).
+    [string]$Scanners = "",
+
+    # Comma-separated drive letters to limit the scan to, e.g. "C:,D:"
+    # Omit to scan all available drives (or to be prompted interactively).
+    [string]$Drives = "",
+
+    # 0 = quiet (default), 1 = verbose per-scanner debug output
+    [int]$VerbosityLevel = 0,
+
+    # Comma-separated leaf names of scanners whose findings should be silenced
+    # from console output (findings are still written to the JSON report).
+    # e.g. -SuppressWarnings "scan-for-typosquat-packages.ps1"
+    [string]$SuppressWarnings = "",
+
+    # Pass -NonInteractive to suppress the menu and use defaults / flags as-is.
+    [switch]$NonInteractive
 )
 
 $ErrorActionPreference = 'Continue'
 
+# ── Scanner registry ──────────────────────────────────────────────────────────
+# Add new scanner filenames here as new scanner modules are created.
 $ScannerScripts = @(
     ".\scanners\scan-for-axios-hack.ps1"
     ".\scanners\scan-for-lifecycle-script-abuse.ps1"
@@ -24,6 +49,125 @@ $ExcludedFolderNames = @(
     '$Recycle.Bin',
     'System Volume Information'
 )
+
+# ── Interactive menu helpers ──────────────────────────────────────────────────
+
+function Show-Header {
+    param([string]$Version)
+    Clear-Host
+    Write-Host ""
+    Write-Host "  Supply Chain Hack Scanner  v$Version" -ForegroundColor Cyan
+    Write-Host "  ══════════════════════════════════════" -ForegroundColor DarkCyan
+    Write-Host "  © 2026 Sooke Software — Ted Neustaedter. All rights reserved." -ForegroundColor DarkGray
+    Write-Host "  https://sookesoft.com" -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+# Present a numbered multi-select checklist.
+# Returns the subset of $Items the user selected; all items selected by default.
+function Invoke-ChecklistMenu {
+    param(
+        [string]$Title,
+        [string[]]$Items,
+        [bool[]]$Defaults      # must be same length as $Items
+    )
+
+    # Build working state
+    $selected = for ($i = 0; $i -lt $Items.Count; $i++) { $Defaults[$i] }
+
+    while ($true) {
+        Write-Host ""
+        Write-Host "  $Title" -ForegroundColor Cyan
+        Write-Host "  $('─' * ($Title.Length))" -ForegroundColor DarkCyan
+        Write-Host ""
+        for ($i = 0; $i -lt $Items.Count; $i++) {
+            $box = if ($selected[$i]) { '[x]' } else { '[ ]' }
+            $color = if ($selected[$i]) { 'White' } else { 'DarkGray' }
+            Write-Host ("  {0,2}. $box {1}" -f ($i + 1), $Items[$i]) -ForegroundColor $color
+        }
+        Write-Host ""
+        Write-Host "  Enter number(s) to toggle (e.g. 1 3), [A]ll, [N]one, or [Enter] to confirm: " `
+            -ForegroundColor DarkYellow -NoNewline
+
+        $input = (Read-Host).Trim()
+
+        if ($input -eq '') { break }
+
+        switch -Regex ($input) {
+            '^[Aa]$' {
+                for ($i = 0; $i -lt $selected.Count; $i++) { $selected[$i] = $true }
+            }
+            '^[Nn]$' {
+                for ($i = 0; $i -lt $selected.Count; $i++) { $selected[$i] = $false }
+            }
+            default {
+                foreach ($tok in ($input -split '\s+')) {
+                    if ($tok -match '^\d+$') {
+                        $idx = [int]$tok - 1
+                        if ($idx -ge 0 -and $idx -lt $selected.Count) {
+                            $selected[$idx] = -not $selected[$idx]
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    # Return selected items
+    for ($i = 0; $i -lt $Items.Count; $i++) {
+        if ($selected[$i]) { $Items[$i] }
+    }
+}
+
+# Present a Y/N prompt; returns $true for Yes.
+function Invoke-YesNo {
+    param([string]$Prompt, [bool]$Default = $false)
+    $hint = if ($Default) { '[Y/n]' } else { '[y/N]' }
+    Write-Host "  $Prompt $hint : " -ForegroundColor DarkYellow -NoNewline
+    $r = (Read-Host).Trim()
+    if ($r -eq '') { return $Default }
+    return $r -match '^[Yy]'
+}
+
+# Prompt for a string; returns the typed value or $Default if empty.
+function Invoke-StringPrompt {
+    param([string]$Prompt, [string]$Default = '')
+    $hint = if ($Default) { "(default: $Default)" } else { '(leave blank to skip)' }
+    Write-Host "  $Prompt $hint : " -ForegroundColor DarkYellow -NoNewline
+    $r = (Read-Host).Trim()
+    if ($r -eq '') { return $Default }
+    return $r
+}
+
+# Single-choice menu from a numbered list; returns the chosen item.
+function Invoke-SingleChoiceMenu {
+    param(
+        [string]$Title,
+        [string[]]$Items,
+        [int]$DefaultIndex = 0
+    )
+    while ($true) {
+        Write-Host ""
+        Write-Host "  $Title" -ForegroundColor Cyan
+        Write-Host "  $('─' * ($Title.Length))" -ForegroundColor DarkCyan
+        Write-Host ""
+        for ($i = 0; $i -lt $Items.Count; $i++) {
+            $marker = if ($i -eq $DefaultIndex) { '>' } else { ' ' }
+            $color  = if ($i -eq $DefaultIndex) { 'White' } else { 'DarkGray' }
+            Write-Host ("  $marker {0,2}. {1}" -f ($i + 1), $Items[$i]) -ForegroundColor $color
+        }
+        Write-Host ""
+        Write-Host "  Enter number (or [Enter] for default): " `
+            -ForegroundColor DarkYellow -NoNewline
+        $r = (Read-Host).Trim()
+        if ($r -eq '') { return $Items[$DefaultIndex] }
+        if ($r -match '^\d+$') {
+            $idx = [int]$r - 1
+            if ($idx -ge 0 -and $idx -lt $Items.Count) { return $Items[$idx] }
+        }
+        Write-Host "  Invalid selection — please try again." -ForegroundColor Red
+    }
+}
 
 
 function Get-SeveritySortValue {
@@ -80,51 +224,224 @@ function Get-AllFoldersBreadthFirst {
 }
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$resolvedScanners = New-Object System.Collections.Generic.List[string]
-$allFindings = New-Object System.Collections.Generic.List[object]
-$driverErrors = New-Object System.Collections.Generic.List[object]
-$driveFolderCounts = @{}
 
-foreach ($scanner in $ScannerScripts) {
-    $scannerPath = $scanner
-    if (-not [System.IO.Path]::IsPathRooted($scannerPath)) {
-        $scannerPath = Join-Path $scriptRoot $scannerPath
-    }
+# Read version
+$_versionFile = Join-Path $scriptRoot 'VERSION'
+$_version = if (Test-Path -LiteralPath $_versionFile) { (Get-Content -LiteralPath $_versionFile -Raw).Trim() } else { 'unknown' }
 
-    if (-not (Test-Path -LiteralPath $scannerPath)) {
-        throw "Scanner script not found: $scannerPath"
-    }
+# Detect whether stdin is a terminal (interactive session).
+$_isInteractive = [Environment]::UserInteractive -and
+                  -not $NonInteractive -and
+                  $Scanners         -eq '' -and
+                  $Drives           -eq '' -and
+                  -not $IncludeRemovableDrives -and
+                  -not $SkipNetworkDrives -and
+                  $OutputJson       -eq '' -and
+                  $VerbosityLevel   -eq 0 -and
+                  $SuppressWarnings -eq ''
 
-    $resolvedScanners.Add((Resolve-Path -LiteralPath $scannerPath).Path)
+# ── Resolve the full list of available scanners ───────────────────────────────
+$allAvailableScanners = [System.Collections.Generic.List[string]]::new()
+foreach ($s in $ScannerScripts) {
+    $p = if ([System.IO.Path]::IsPathRooted($s)) { $s } else { Join-Path $scriptRoot $s }
+    if (Test-Path -LiteralPath $p) { $allAvailableScanners.Add((Resolve-Path -LiteralPath $p).Path) }
 }
 
+# ── Interactive menu ──────────────────────────────────────────────────────────
+if ($_isInteractive) {
+    Show-Header $_version
+
+    Write-Host "  DISCLAIMER: This tool is provided as-is for informational and defensive security" -ForegroundColor DarkYellow
+    Write-Host "  purposes only. It does not guarantee complete detection of all supply chain threats." -ForegroundColor DarkYellow
+    Write-Host "  Detections are based on heuristic pattern matching and may produce false positives —" -ForegroundColor DarkYellow
+    Write-Host "  reported findings should not be treated as confirmed indicators of compromise without" -ForegroundColor DarkYellow
+    Write-Host "  independent verification. Conversely, the absence of findings does not guarantee that" -ForegroundColor DarkYellow
+    Write-Host "  a project is free from supply chain risk. Attackers may leave misleading breadcrumbs," -ForegroundColor DarkYellow
+    Write-Host "  intentionally crafted evidence, or obfuscated indicators that circumvent these checks." -ForegroundColor DarkYellow
+    Write-Host "  Results should be reviewed by a qualified security professional in the full context of" -ForegroundColor DarkYellow
+    Write-Host "  your environment. Sooke Software and Ted Neustaedter accept no liability for actions" -ForegroundColor DarkYellow
+    Write-Host "  taken or not taken based on this output." -ForegroundColor DarkYellow
+    Write-Host ""
+
+    # — Scanner selection ——————————————————————————————————————————————————————
+    $scannerLabels  = @($allAvailableScanners | ForEach-Object { Split-Path $_ -Leaf })
+    $scannerDefaults = @($scannerLabels | ForEach-Object { $true })
+
+    $chosenLabels = @(Invoke-ChecklistMenu `
+        -Title    'Select scanners to run' `
+        -Items    $scannerLabels `
+        -Defaults $scannerDefaults)
+
+    if ($chosenLabels.Count -eq 0) {
+        Write-Host ""
+        Write-Host "  No scanners selected — nothing to do." -ForegroundColor Yellow
+        return
+    }
+
+    # — Drive selection ————————————————————————————————————————————————————————
+    $allDrives = @(Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -in 2, 3, 4 } | Sort-Object DeviceID)
+    $driveLabels   = @($allDrives | ForEach-Object {
+        $label = if ($_.VolumeName) { "$($_.DeviceID) ($($_.VolumeName))" } else { $_.DeviceID }
+        $typeStr = switch ($_.DriveType) { 3 { 'Fixed' } 4 { 'Network' } 2 { 'Removable' } default { 'Other' } }
+        "$label  [$typeStr]"
+    })
+    $driveDefaults = @($allDrives | ForEach-Object { $_.DriveType -eq 3 })   # default: fixed drives only
+
+    $chosenDriveLabels = @(Invoke-ChecklistMenu `
+        -Title    'Select drives to scan' `
+        -Items    $driveLabels `
+        -Defaults $driveDefaults)
+
+    if ($chosenDriveLabels.Count -eq 0) {
+        Write-Host ""
+        Write-Host "  No drives selected — nothing to do." -ForegroundColor Yellow
+        return
+    }
+
+    # Map chosen drive labels back to DeviceID list
+    $chosenDriveIds = [System.Collections.Generic.List[string]]::new()
+    for ($i = 0; $i -lt $driveLabels.Count; $i++) {
+        if ($chosenDriveLabels -contains $driveLabels[$i]) {
+            $chosenDriveIds.Add($allDrives[$i].DeviceID)
+        }
+    }
+
+    # — Options ————————————————————————————————————————————————————————————————
+    Show-Header $_version
+    Write-Host "  Scan options" -ForegroundColor Cyan
+    Write-Host "  ────────────" -ForegroundColor DarkCyan
+    Write-Host ""
+
+    $verbChoice = Invoke-SingleChoiceMenu `
+        -Title        'Verbosity level' `
+        -Items        @('0 — Quiet (findings only)', '1 — Verbose (per-scanner debug output)') `
+        -DefaultIndex 0
+    $VerbosityLevel = if ($verbChoice -like '1*') { 1 } else { 0 }
+
+    $OutputJson = Invoke-StringPrompt -Prompt 'Save JSON report to file path' -Default ''
+
+    # — Warning suppression ———————————————————————————————————————————————————
+    $suppressDefaults = @($chosenLabels | ForEach-Object { $false })
+    $suppressedLabels = @(Invoke-ChecklistMenu `
+        -Title    'Suppress console warnings for which scanners? (findings still saved to JSON)' `
+        -Items    $chosenLabels `
+        -Defaults $suppressDefaults)
+
+    # — Confirmation ———————————————————————————————————————————————————————————
+    Show-Header $_version
+    Write-Host "  Ready to scan" -ForegroundColor Cyan
+    Write-Host "  ─────────────" -ForegroundColor DarkCyan
+    Write-Host ""
+    Write-Host "  Drives   : $($chosenDriveIds -join ', ')" -ForegroundColor White
+    Write-Host "  Scanners : $($chosenLabels -join ', ')"   -ForegroundColor White
+    Write-Host "  Verbosity: $VerbosityLevel"               -ForegroundColor White
+    if ($suppressedLabels.Count -gt 0) {
+        Write-Host "  Suppress : $($suppressedLabels -join ', ')" -ForegroundColor DarkGray
+    }
+    if ($OutputJson) { Write-Host "  JSON out : $OutputJson" -ForegroundColor White }
+    Write-Host ""
+
+    if (-not (Invoke-YesNo -Prompt 'Start scan?' -Default $true)) {
+        Write-Host ""
+        Write-Host "  Scan cancelled." -ForegroundColor Yellow
+        return
+    }
+
+    # Apply selections to the variables used by the rest of the script
+    $resolvedScanners = New-Object System.Collections.Generic.List[string]
+    foreach ($lbl in $chosenLabels) {
+        $match = $allAvailableScanners | Where-Object { (Split-Path $_ -Leaf) -eq $lbl }
+        if ($match) { $resolvedScanners.Add($match) }
+    }
+
+    $script:_suppressedScanners = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]$suppressedLabels, [System.StringComparer]::OrdinalIgnoreCase)
+
+    # Restrict drive enumeration to chosen drives
+    $script:_chosenDriveIds = $chosenDriveIds
+}
+else {
+    # ── Non-interactive: respect CLI flags ────────────────────────────────────
+    # Validate that at least one scanner exists
+    if ($allAvailableScanners.Count -eq 0) {
+        throw "No scanner scripts found. Check the ScannerScripts array."
+    }
+
+    $resolvedScanners = New-Object System.Collections.Generic.List[string]
+
+    if ($Scanners -ne '') {
+        $requestedLeaves = $Scanners -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+        foreach ($leaf in $requestedLeaves) {
+            $match = $allAvailableScanners | Where-Object { (Split-Path $_ -Leaf) -eq $leaf }
+            if (-not $match) { throw "Requested scanner not found: $leaf" }
+            $resolvedScanners.Add($match)
+        }
+    } else {
+        $allAvailableScanners | ForEach-Object { $resolvedScanners.Add($_) }
+    }
+
+    $script:_chosenDriveIds = @()
+    if ($Drives -ne '') {
+        $script:_chosenDriveIds = @($Drives -split ',' | ForEach-Object { $_.Trim().TrimEnd('\') } | Where-Object { $_ })
+    }
+
+    $script:_suppressedScanners = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]($SuppressWarnings -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }),
+        [System.StringComparer]::OrdinalIgnoreCase)
+}
+
+# ── Progress-bar style ────────────────────────────────────────────────────────
+if ($PSStyle -and $PSStyle.Progress) {
+    $PSStyle.Progress.Style = "`e[44;1;97m"
+} else {
+    try { $Host.PrivateData.ProgressBackgroundColor = 'DarkBlue' }  catch {}
+    try { $Host.PrivateData.ProgressForegroundColor = 'Cyan'     }  catch {}
+}
+
+# ── Final drive list ──────────────────────────────────────────────────────────
 $drives = Get-DriveList
-if (-not $drives) {
+
+if ($script:_chosenDriveIds -and $script:_chosenDriveIds.Count -gt 0) {
+    $chosenSet = @($script:_chosenDriveIds | ForEach-Object { $_.TrimEnd('\') })
+    $drives = @($drives | Where-Object { $chosenSet -contains $_.DeviceID.TrimEnd('\') })
+}
+
+if (-not $drives -or @($drives).Count -eq 0) {
     Write-Host "No drives found to scan." -ForegroundColor Yellow
     return
 }
 
+# ── Header (non-interactive path) ────────────────────────────────────────────
+if (-not $_isInteractive) {
+    Write-Host ""
+    Write-Host "Supply Chain Hack Scanner"
+    Write-Host "========================="
+    Write-Host "Version $_version"
+    Write-Host "© 2026 Sooke Software — Ted Neustaedter. All rights reserved."
+    Write-Host "https://sookesoft.com"
+    Write-Host ""
+    Write-Host "DISCLAIMER: This tool is provided as-is for informational and defensive security" -ForegroundColor DarkYellow
+    Write-Host "purposes only. It does not guarantee complete detection of all supply chain threats." -ForegroundColor DarkYellow
+    Write-Host "Detections are based on heuristic pattern matching and may produce false positives —" -ForegroundColor DarkYellow
+    Write-Host "reported findings should not be treated as confirmed indicators of compromise without" -ForegroundColor DarkYellow
+    Write-Host "independent verification. Conversely, the absence of findings does not guarantee that" -ForegroundColor DarkYellow
+    Write-Host "a project is free from supply chain risk. Attackers may leave misleading breadcrumbs," -ForegroundColor DarkYellow
+    Write-Host "intentionally crafted evidence, or obfuscated indicators that circumvent these checks." -ForegroundColor DarkYellow
+    Write-Host "Results should be reviewed by a qualified security professional in the full context of" -ForegroundColor DarkYellow
+    Write-Host "your environment. Sooke Software and Ted Neustaedter accept no liability for actions" -ForegroundColor DarkYellow
+    Write-Host "taken or not taken based on this output." -ForegroundColor DarkYellow
+    Write-Host ""
+}
+
 Write-Host ""
-Write-Host "Supply Chain Hack Scanner"
-Write-Host "========================="
-$_versionFile = Join-Path $scriptRoot 'VERSION'
-$_version = if (Test-Path -LiteralPath $_versionFile) { (Get-Content -LiteralPath $_versionFile -Raw).Trim() } else { 'unknown' }
-Write-Host "Version $_version"
-Write-Host "© 2026 Sooke Software — Ted Neustaedter. All rights reserved."
-Write-Host "https://sookesoft.com"
-Write-Host ""
-Write-Host "DISCLAIMER: This tool is provided as-is for informational and defensive security" -ForegroundColor DarkYellow
-Write-Host "purposes only. It does not guarantee complete detection of all supply chain threats." -ForegroundColor DarkYellow
-Write-Host "Results should be reviewed by a qualified professional. Sooke Software and Ted" -ForegroundColor DarkYellow
-Write-Host "Neustaedter accept no liability for actions taken or not taken based on this output." -ForegroundColor DarkYellow
+Write-Host "Starting scan — $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
+Write-Host "Scanners  : $(($resolvedScanners | ForEach-Object { Split-Path $_ -Leaf }) -join ', ')" -ForegroundColor DarkGray
+Write-Host "Drives    : $((@($drives | ForEach-Object { $_.DeviceID })) -join ', ')" -ForegroundColor DarkGray
 Write-Host ""
 
-if ($PSStyle -and $PSStyle.Progress) {
-    $PSStyle.Progress.Style = "`e[44;1;97m"   # blue background, bold, white text (PS7+)
-} else {
-    $Host.PrivateData.ProgressBackgroundColor = 'DarkBlue'
-    $Host.PrivateData.ProgressForegroundColor = 'Cyan'
-}
+$allFindings    = New-Object System.Collections.Generic.List[object]
+$driverErrors   = New-Object System.Collections.Generic.List[object]
+$driveFolderCounts = @{}
 
 foreach ($drive in $drives) {
     $driveRoot = "$($drive.DeviceID)\"
@@ -146,9 +463,10 @@ foreach ($drive in $drives) {
 
         foreach ($scanner in $resolvedScanners) {
             $scannerName = Split-Path $scanner -Leaf
+            $isSuppressed = $script:_suppressedScanners.Contains($scannerName)
 
             try {
-                $results = & $scanner -ScanPath $folder
+                $results = & $scanner -ScanPath $folder -VerbosityLevel $VerbosityLevel
 
                 if ($results) {
                     # One status line per file, coloured by worst finding in that file
@@ -156,24 +474,26 @@ foreach ($drive in $drives) {
                     foreach ($group in $byPath) {
                         $highProblems   = @($group.Group | Where-Object { $_.Severity -eq 'HIGH' })
                         $mediumProblems = @($group.Group | Where-Object { $_.Severity -eq 'Medium' })
-                        if ($highProblems.Count -gt 0) {
-                            Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
-                            foreach ($r in $highProblems) {
-                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
-                                Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
+                        if (-not $isSuppressed) {
+                            if ($highProblems.Count -gt 0) {
+                                Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
+                                foreach ($r in $highProblems) {
+                                    Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
+                                    Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
+                                }
+                                foreach ($r in $mediumProblems) {
+                                    Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
+                                    Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
+                                }
+                            } elseif ($mediumProblems.Count -gt 0) {
+                                Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
+                                foreach ($r in $mediumProblems) {
+                                    Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
+                                    Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
+                                }
+                            } else {
+                                Write-Host "  Scanning: $($group.Name)  ✓" -ForegroundColor Green
                             }
-                            foreach ($r in $mediumProblems) {
-                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
-                                Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
-                            }
-                        } elseif ($mediumProblems.Count -gt 0) {
-                            Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
-                            foreach ($r in $mediumProblems) {
-                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
-                                Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
-                            }
-                        } else {
-                            Write-Host "  Scanning: $($group.Name)  ✓" -ForegroundColor Green
                         }
                     }
 
@@ -267,9 +587,13 @@ if ($driverErrors.Count -gt 0) {
 if ($OutputJson) {
     $payload = [pscustomobject]@{
         ScanTimeUtc      = (Get-Date).ToUniversalTime().ToString("o")
-        DriverScript     = $MyInvocation.MyCommand.Path
-        ScannerScripts   = @($resolvedScanners)
-        Findings         = @($sortedFindings)
+        Version             = $_version
+        DriverScript        = $MyInvocation.MyCommand.Path
+        ScannerScripts      = @($resolvedScanners | ForEach-Object { Split-Path $_ -Leaf })
+        SuppressedScanners  = @($script:_suppressedScanners)
+        Drives              = @($drives | ForEach-Object { $_.DeviceID })
+        VerbosityLevel      = $VerbosityLevel
+        Findings            = @($sortedFindings)
         PerDriveSummary  = @($summary)
         Errors           = @($driverErrors)
     }
