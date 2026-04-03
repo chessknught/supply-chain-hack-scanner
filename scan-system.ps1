@@ -1,4 +1,5 @@
-# © 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+# © 2026 Sooke Software — Ted Neustaedter.
+# Licensed under the GNU General Public License, version 3 or later.
 
 [CmdletBinding()]
 param(
@@ -42,6 +43,7 @@ $ScannerScripts = @(
     ".\scanners\scan-for-suspicious-domains.ps1"
     ".\scanners\scan-for-typosquat-packages.ps1"
     ".\scanners\scan-for-dependency-confusion.ps1"
+    ".\scanners\scan-for-credential-theft-behavior.ps1"
     # ".\scanners\scan-other-thing.ps1"
 )
 
@@ -55,12 +57,45 @@ $ExcludedFolderNames = @(
 function Show-Header {
     param([string]$Version)
     Clear-Host
+    $titleText = " Supply Chain Hack Scanner  v$Version "
+    $innerWidth = [Math]::Max(42, $titleText.Length)
+    $topBorder = "  ╔" + ('═' * $innerWidth) + "╗"
+    $titleLine = "  ║" + $titleText.PadRight($innerWidth) + "║"
+    $bottomBorder = "  ╚" + ('═' * $innerWidth) + "╝"
+
     Write-Host ""
-    Write-Host "  Supply Chain Hack Scanner  v$Version" -ForegroundColor Cyan
-    Write-Host "  ══════════════════════════════════════" -ForegroundColor DarkCyan
-    Write-Host "  © 2026 Sooke Software — Ted Neustaedter. All rights reserved." -ForegroundColor DarkGray
+    Write-Host $topBorder -ForegroundColor DarkCyan
+    Write-Host $titleLine -ForegroundColor Cyan
+    Write-Host $bottomBorder -ForegroundColor DarkCyan
+    Write-Host "  © 2026 Sooke Software — Ted Neustaedter. GNU GPL v3.0-or-later." -ForegroundColor DarkGray
     Write-Host "  https://sookesoft.com" -ForegroundColor DarkGray
     Write-Host ""
+}
+
+function Show-Disclaimer {
+    Write-Host "  DISCLAIMER: This tool is provided as-is for informational and defensive security" -ForegroundColor DarkYellow
+    Write-Host "  purposes only. It does not guarantee complete detection of all supply chain threats." -ForegroundColor DarkYellow
+    Write-Host "  Detections are based on heuristic pattern matching and may produce false positives —" -ForegroundColor DarkYellow
+    Write-Host "  reported findings should not be treated as confirmed indicators of compromise without" -ForegroundColor DarkYellow
+    Write-Host "  independent verification. Conversely, the absence of findings does not guarantee that" -ForegroundColor DarkYellow
+    Write-Host "  a project is free from supply chain risk. Attackers may leave misleading breadcrumbs," -ForegroundColor DarkYellow
+    Write-Host "  intentionally crafted evidence, or obfuscated indicators that circumvent these checks." -ForegroundColor DarkYellow
+    Write-Host "  Results should be reviewed by a qualified security professional in the full context of" -ForegroundColor DarkYellow
+    Write-Host "  your environment. Sooke Software and Ted Neustaedter accept no liability for actions" -ForegroundColor DarkYellow
+    Write-Host "  taken or not taken based on this output." -ForegroundColor DarkYellow
+    Write-Host ""
+}
+
+function Show-InteractiveScreen {
+    param([string]$Title)
+
+    Show-Header $_version
+    Show-Disclaimer
+    if ($Title) {
+        Write-Host "  $Title" -ForegroundColor Cyan
+        Write-Host "  $('─' * ($Title.Length))" -ForegroundColor DarkCyan
+        Write-Host ""
+    }
 }
 
 function Invoke-ChecklistMenu {
@@ -81,11 +116,7 @@ function Invoke-ChecklistMenu {
     $cursorIndex = 0
 
     while ($true) {
-        Clear-Host
-        Write-Host ""
-        Write-Host "  $Title" -ForegroundColor Cyan
-        Write-Host "  $('─' * ($Title.Length))" -ForegroundColor DarkCyan
-        Write-Host ""
+        Show-InteractiveScreen -Title $Title
         Write-Host "  Use Up/Down to move, Space to toggle, A = all, N = none, Enter = confirm." -ForegroundColor DarkYellow
         Write-Host ""
 
@@ -171,11 +202,7 @@ function Invoke-SingleChoiceMenu {
     $cursorIndex = if ($DefaultIndex -ge 0 -and $DefaultIndex -lt $Items.Count) { $DefaultIndex } else { 0 }
 
     while ($true) {
-        Clear-Host
-        Write-Host ""
-        Write-Host "  $Title" -ForegroundColor Cyan
-        Write-Host "  $('─' * ($Title.Length))" -ForegroundColor DarkCyan
-        Write-Host ""
+        Show-InteractiveScreen -Title $Title
         Write-Host "  Use Up/Down to move, Enter to confirm." -ForegroundColor DarkYellow
         Write-Host ""
         for ($i = 0; $i -lt $Items.Count; $i++) {
@@ -315,19 +342,7 @@ $targetDrives = @()
 
 # ── Interactive menu ──────────────────────────────────────────────────────────
 if ($_isInteractive) {
-    Show-Header $_version
-
-    Write-Host "  DISCLAIMER: This tool is provided as-is for informational and defensive security" -ForegroundColor DarkYellow
-    Write-Host "  purposes only. It does not guarantee complete detection of all supply chain threats." -ForegroundColor DarkYellow
-    Write-Host "  Detections are based on heuristic pattern matching and may produce false positives —" -ForegroundColor DarkYellow
-    Write-Host "  reported findings should not be treated as confirmed indicators of compromise without" -ForegroundColor DarkYellow
-    Write-Host "  independent verification. Conversely, the absence of findings does not guarantee that" -ForegroundColor DarkYellow
-    Write-Host "  a project is free from supply chain risk. Attackers may leave misleading breadcrumbs," -ForegroundColor DarkYellow
-    Write-Host "  intentionally crafted evidence, or obfuscated indicators that circumvent these checks." -ForegroundColor DarkYellow
-    Write-Host "  Results should be reviewed by a qualified security professional in the full context of" -ForegroundColor DarkYellow
-    Write-Host "  your environment. Sooke Software and Ted Neustaedter accept no liability for actions" -ForegroundColor DarkYellow
-    Write-Host "  taken or not taken based on this output." -ForegroundColor DarkYellow
-    Write-Host ""
+    Show-InteractiveScreen -Title ''
 
     # — Scanner selection ——————————————————————————————————————————————————————
     $scannerLabels  = @($allAvailableScanners | ForEach-Object { Split-Path $_ -Leaf })
@@ -375,10 +390,7 @@ if ($_isInteractive) {
     }
 
     # — Options ————————————————————————————————————————————————————————————————
-    Show-Header $_version
-    Write-Host "  Scan options" -ForegroundColor Cyan
-    Write-Host "  ────────────" -ForegroundColor DarkCyan
-    Write-Host ""
+    Show-InteractiveScreen -Title 'Scan options'
 
     $verbChoice = Invoke-SingleChoiceMenu `
         -Title        'Verbosity level' `
@@ -396,10 +408,7 @@ if ($_isInteractive) {
         -Defaults $suppressDefaults)
 
     # — Confirmation ———————————————————————————————————————————————————————————
-    Show-Header $_version
-    Write-Host "  Ready to scan" -ForegroundColor Cyan
-    Write-Host "  ─────────────" -ForegroundColor DarkCyan
-    Write-Host ""
+    Show-InteractiveScreen -Title 'Ready to scan'
 
     Write-Host "  Drives" -ForegroundColor White
     Write-Host "  ------" -ForegroundColor DarkGray
@@ -507,7 +516,7 @@ if (-not $_isInteractive) {
     Write-Host "Supply Chain Hack Scanner"
     Write-Host "========================="
     Write-Host "Version $_version"
-    Write-Host "© 2026 Sooke Software — Ted Neustaedter. All rights reserved."
+    Write-Host "© 2026 Sooke Software — Ted Neustaedter. GNU GPL v3.0-or-later."
     Write-Host "https://sookesoft.com"
     Write-Host ""
     Write-Host "DISCLAIMER: This tool is provided as-is for informational and defensive security" -ForegroundColor DarkYellow
@@ -525,8 +534,6 @@ if (-not $_isInteractive) {
 
 Write-Host ""
 Write-Host "Starting scan — $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
-Write-Host "Scanners  : $(($resolvedScanners | ForEach-Object { Split-Path $_ -Leaf }) -join ', ')" -ForegroundColor DarkGray
-Write-Host "Drives    : $((@($targetDrives | ForEach-Object { $_.DeviceID })) -join ', ')" -ForegroundColor DarkGray
 Write-Host ""
 
 $allFindings    = New-Object System.Collections.Generic.List[object]

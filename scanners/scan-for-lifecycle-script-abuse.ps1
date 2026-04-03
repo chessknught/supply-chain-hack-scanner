@@ -1,4 +1,5 @@
-# © 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+# © 2026 Sooke Software — Ted Neustaedter.
+# Licensed under the GNU General Public License, version 3 or later.
 
 [CmdletBinding()]
 param(

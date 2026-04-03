@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# © 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+# © 2026 Sooke Software — Ted Neustaedter.
+# Licensed under the GNU General Public License, version 3 or later.
 #
 # scan-system.sh — scans all local mount points using registered scanner scripts.
 # Requires: bash 4+, jq
@@ -75,6 +76,7 @@ SCANNER_SCRIPTS=(
     "$SCRIPT_DIR/scanners/scan-for-suspicious-domains.sh"
     "$SCRIPT_DIR/scanners/scan-for-typosquat-packages.sh"
     "$SCRIPT_DIR/scanners/scan-for-dependency-confusion.sh"
+    "$SCRIPT_DIR/scanners/scan-for-credential-theft-behavior.sh"
 )
 EXCLUDED_DIR_NAMES=('$Recycle.Bin' 'System Volume Information')
 
@@ -89,7 +91,8 @@ RESET=$'\033[0m'
 
 show_progress() {
     local cols msg padded
-    cols=$(tput cols 2>/dev/null || echo 80)
+    cols=$(stty size </dev/tty 2>/dev/null | awk '{print $2}')
+    [[ -z "$cols" ]] && cols=$(tput cols 2>/dev/null || echo 80)
     msg="${1:0:$(( cols - 3 ))}"
     printf -v padded "%-$(( cols - 2 ))s" "$msg"
     printf '\r\033[44;1;97m %s \033[0m' "$padded" >/dev/tty 2>/dev/null || true
@@ -101,13 +104,52 @@ clear_progress() {
 
 show_header() {
     local version="$1"
+    local title_text=" Supply Chain Hack Scanner  v${version} "
+    local inner_width=${#title_text}
+    if (( inner_width < 42 )); then
+        inner_width=42
+    fi
+
+    local border_fill
+    printf -v border_fill '%*s' "$inner_width" ''
+    border_fill=${border_fill// /═}
+
+    local padded_title
+    printf -v padded_title '%-*s' "$inner_width" "$title_text"
+
     clear >/dev/tty
     printf '\n' >/dev/tty
-    printf "${CYAN}${BOLD}  Supply Chain Hack Scanner  v%s${RESET}\n" "$version" >/dev/tty
-    printf "${CYAN}  ══════════════════════════════════════${RESET}\n" >/dev/tty
-    printf "${GRAY}  © 2026 Sooke Software — Ted Neustaedter. All rights reserved.${RESET}\n" >/dev/tty
+    printf "${CYAN}  ╔%s╗${RESET}\n" "$border_fill" >/dev/tty
+    printf "${CYAN}${BOLD}  ║%s║${RESET}\n" "$padded_title" >/dev/tty
+    printf "${CYAN}  ╚%s╝${RESET}\n" "$border_fill" >/dev/tty
+    printf "${GRAY}  © 2026 Sooke Software — Ted Neustaedter. GNU GPL v3.0-or-later.${RESET}\n" >/dev/tty
     printf "${GRAY}  https://sookesoft.com${RESET}\n" >/dev/tty
     printf '\n' >/dev/tty
+}
+
+show_disclaimer() {
+    printf "${DARK_YELLOW}  DISCLAIMER: This tool is provided as-is for informational and defensive security${RESET}\n" >/dev/tty
+    printf "${DARK_YELLOW}  purposes only. It does not guarantee complete detection of all supply chain threats.${RESET}\n" >/dev/tty
+    printf "${DARK_YELLOW}  Detections are based on heuristic pattern matching and may produce false positives —${RESET}\n" >/dev/tty
+    printf "${DARK_YELLOW}  reported findings should not be treated as confirmed indicators of compromise without${RESET}\n" >/dev/tty
+    printf "${DARK_YELLOW}  independent verification. Conversely, the absence of findings does not guarantee that${RESET}\n" >/dev/tty
+    printf "${DARK_YELLOW}  a project is free from supply chain risk. Attackers may leave misleading breadcrumbs,${RESET}\n" >/dev/tty
+    printf "${DARK_YELLOW}  intentionally crafted evidence, or obfuscated indicators that circumvent these checks.${RESET}\n" >/dev/tty
+    printf "${DARK_YELLOW}  Results should be reviewed by a qualified security professional in the full context of${RESET}\n" >/dev/tty
+    printf "${DARK_YELLOW}  your environment. Sooke Software and Ted Neustaedter accept no liability for actions${RESET}\n" >/dev/tty
+    printf "${DARK_YELLOW}  taken or not taken based on this output.${RESET}\n" >/dev/tty
+    printf '\n' >/dev/tty
+}
+
+show_interactive_screen() {
+    local title="$1"
+    show_header "$_version"
+    show_disclaimer
+    if [[ -n "$title" ]]; then
+        printf "${CYAN}  %s${RESET}\n" "$title" >/dev/tty
+        printf "${CYAN}  %s${RESET}\n" "$(printf '─%.0s' $(seq 1 ${#title}))" >/dev/tty
+        printf '\n' >/dev/tty
+    fi
 }
 
 checklist_menu() {
@@ -125,11 +167,7 @@ checklist_menu() {
     done
 
     while true; do
-        printf '\033[2J\033[H' >/dev/tty
-        printf '\n' >/dev/tty
-        printf "${CYAN}  %s${RESET}\n" "$title" >/dev/tty
-        printf "${CYAN}  %s${RESET}\n" "$(printf '─%.0s' $(seq 1 ${#title}))" >/dev/tty
-        printf '\n' >/dev/tty
+        show_interactive_screen "$title"
         printf "${DARK_YELLOW}  Use Up/Down to move, Space to toggle, A = all, N = none, Enter = confirm.${RESET}\n" >/dev/tty
         printf '\n' >/dev/tty
 
@@ -228,11 +266,7 @@ single_choice_menu() {
     fi
 
     while true; do
-        printf '\033[2J\033[H' >/dev/tty
-        printf '\n' >/dev/tty
-        printf "${CYAN}  %s${RESET}\n" "$title" >/dev/tty
-        printf "${CYAN}  %s${RESET}\n" "$(printf '─%.0s' $(seq 1 ${#title}))" >/dev/tty
-        printf '\n' >/dev/tty
+        show_interactive_screen "$title"
         printf "${DARK_YELLOW}  Use Up/Down to move, Enter to confirm.${RESET}\n" >/dev/tty
         printf '\n' >/dev/tty
         for (( i=0; i<count; i++ )); do
@@ -328,18 +362,7 @@ done
 
 # ── Interactive menu ──────────────────────────────────────────────────────────
 if $IS_INTERACTIVE; then
-    show_header "$_version"
-
-    printf "${DARK_YELLOW}  DISCLAIMER: This tool is provided as-is for informational and defensive security${RESET}\n" >/dev/tty
-    printf "${DARK_YELLOW}  purposes only. It does not guarantee complete detection of all supply chain threats.${RESET}\n" >/dev/tty
-    printf "${DARK_YELLOW}  Detections are based on heuristic pattern matching and may produce false positives —${RESET}\n" >/dev/tty
-    printf "${DARK_YELLOW}  reported findings should not be treated as confirmed indicators of compromise without${RESET}\n" >/dev/tty
-    printf "${DARK_YELLOW}  independent verification. Conversely, the absence of findings does not guarantee that${RESET}\n" >/dev/tty
-    printf "${DARK_YELLOW}  a project is free from supply chain risk. Attackers may leave misleading breadcrumbs,${RESET}\n" >/dev/tty
-    printf "${DARK_YELLOW}  intentionally crafted evidence, or obfuscated indicators that circumvent these checks.${RESET}\n" >/dev/tty
-    printf "${DARK_YELLOW}  Results should be reviewed by a qualified security professional in the full context of${RESET}\n" >/dev/tty
-    printf "${DARK_YELLOW}  your environment. Sooke Software and Ted Neustaedter accept no liability for actions${RESET}\n" >/dev/tty
-    printf "${DARK_YELLOW}  taken or not taken based on this output.${RESET}\n" >/dev/tty
+    show_interactive_screen ""
 
     scanner_labels=()
     scanner_defaults=()
@@ -368,9 +391,7 @@ if $IS_INTERACTIVE; then
         exit 0
     fi
 
-    show_header "$_version"
-    printf "${CYAN}  Scan options${RESET}\n" >/dev/tty
-    printf "${CYAN}  ────────────${RESET}\n\n" >/dev/tty
+    show_interactive_screen "Scan options"
 
     verb_options=("0 — Quiet (findings only)" "1 — Verbose (per-scanner debug output)")
     verb_choice=$(single_choice_menu "Verbosity level" verb_options 0)
@@ -384,9 +405,7 @@ if $IS_INTERACTIVE; then
         "Suppress console warnings for which scanners? (findings still saved to JSON)" \
         chosen_scanner_labels suppress_defaults)
 
-    show_header "$_version"
-    printf "${CYAN}  Ready to scan${RESET}\n" >/dev/tty
-    printf "${CYAN}  ─────────────${RESET}\n\n" >/dev/tty
+    show_interactive_screen "Ready to scan"
 
     printf "${RESET}  Mounts${RESET}\n" >/dev/tty
     printf "${GRAY}  ------${RESET}\n" >/dev/tty
@@ -481,7 +500,7 @@ if ! $IS_INTERACTIVE; then
     echo "Supply Chain Hack Scanner"
     echo "========================="
     echo "Version $_version"
-    echo "© 2026 Sooke Software — Ted Neustaedter. All rights reserved."
+    echo "© 2026 Sooke Software — Ted Neustaedter. GNU GPL v3.0-or-later."
     echo "https://sookesoft.com"
     echo ""
     printf '%b%s%b\n' "$DARK_YELLOW" "DISCLAIMER: This tool is provided as-is for informational and defensive security" "$RESET"
@@ -499,8 +518,6 @@ fi
 
 echo ""
 printf "${CYAN}Starting scan — %s${RESET}\n" "$(date '+%Y-%m-%d %H:%M:%S')"
-printf "${GRAY}Scanners  : %s${RESET}\n" "$(printf '%s ' "${active_scanners[@]}" | xargs -n1 basename | tr '\n' ' ')"
-printf "${GRAY}Mounts    : %s${RESET}\n" "${active_mounts[*]}"
 echo ""
 
 # ── Build find exclusion arguments ────────────────────────────────────────────

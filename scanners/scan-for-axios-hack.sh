@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# © 2026 Sooke Software — Ted Neustaedter. All rights reserved.
+# © 2026 Sooke Software — Ted Neustaedter.
+# Licensed under the GNU General Public License, version 3 or later.
 #
 # scan-for-axios-hack.sh — scans a single directory (non-recursive) for the axios supply chain hack.
 # Output: JSONL (one compact JSON object per finding) to stdout.
