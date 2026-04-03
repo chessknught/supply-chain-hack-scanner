@@ -17,6 +17,3 @@ Desktop.ini
 
 # Logs
 *.log
-
-# ignore local deploy script
-deploy.ps1

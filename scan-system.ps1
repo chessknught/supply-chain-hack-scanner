@@ -282,16 +282,37 @@ function Get-AllFoldersBreadthFirst {
     }
 }
 
-function Show-ProgressLine {
-    param([string]$Text)
+$script:CurrentProgressText = ''
+$script:ProgressEsc = [char]27
+$script:ProgressOverlayEnabled = -not [Console]::IsOutputRedirected
 
+function Get-ConsoleWidth {
     try {
-        $width = [Math]::Max(20, $Host.UI.RawUI.WindowSize.Width)
+        [Math]::Max(20, $Host.UI.RawUI.WindowSize.Width)
     }
     catch {
-        $width = 80
+        80
+    }
+}
+
+function Get-ConsoleHeight {
+    try {
+        [Math]::Max(5, $Host.UI.RawUI.WindowSize.Height)
+    }
+    catch {
+        25
+    }
+}
+
+function Render-ProgressLine {
+    param([string]$Text)
+
+    if (-not $script:ProgressOverlayEnabled -or [string]::IsNullOrEmpty($Text)) {
+        return
     }
 
+    $width = Get-ConsoleWidth
+    $height = Get-ConsoleHeight
     $contentWidth = [Math]::Max(1, $width - 1)
     $displayText = if ($Text.Length -gt $contentWidth) {
         $Text.Substring(0, $contentWidth)
@@ -300,19 +321,40 @@ function Show-ProgressLine {
         $Text.PadRight($contentWidth)
     }
 
-    Write-Host ("`r$displayText") -NoNewline -BackgroundColor DarkBlue -ForegroundColor White
+    $esc = $script:ProgressEsc
+    $sequence = "${esc}[s${esc}[${height};1H${esc}[2K${esc}[44;97m$displayText${esc}[0m${esc}[u"
+    Write-Host $sequence -NoNewline
+}
+
+function Show-ProgressLine {
+    param([string]$Text)
+
+    $script:CurrentProgressText = $Text
+    Render-ProgressLine -Text $Text
 }
 
 function Clear-ProgressLine {
-    try {
-        $width = [Math]::Max(20, $Host.UI.RawUI.WindowSize.Width)
-    }
-    catch {
-        $width = 80
+    if (-not $script:ProgressOverlayEnabled) {
+        return
     }
 
+    $height = Get-ConsoleHeight
+    $esc = $script:ProgressEsc
+    $width = Get-ConsoleWidth
     $blank = ' ' * [Math]::Max(1, $width - 1)
-    Write-Host ("`r$blank`r") -NoNewline
+    $sequence = "${esc}[s${esc}[${height};1H${esc}[2K$blank${esc}[u"
+    Write-Host $sequence -NoNewline
+}
+
+function Restore-ProgressLine {
+    if (-not [string]::IsNullOrEmpty($script:CurrentProgressText)) {
+        Render-ProgressLine -Text $script:CurrentProgressText
+    }
+}
+
+function Reset-ProgressLine {
+    Clear-ProgressLine
+    $script:CurrentProgressText = ''
 }
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -579,28 +621,36 @@ foreach ($drive in $targetDrives) {
                     foreach ($group in $byPath) {
                         $highProblems   = @($group.Group | Where-Object { $_.Severity -eq 'HIGH' })
                         $mediumProblems = @($group.Group | Where-Object { $_.Severity -eq 'Medium' })
-                        if (-not $isSuppressed) {
-                            if ($highProblems.Count -gt 0) {
-                                Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
-                                foreach ($r in $highProblems) {
-                                    Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
-                                    Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
-                                }
-                                foreach ($r in $mediumProblems) {
-                                    Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
-                                    Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
-                                }
-                            } elseif ($mediumProblems.Count -gt 0) {
-                                Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
-                                foreach ($r in $mediumProblems) {
-                                    Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
-                                    Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
-                                }
-                            } else {
-                                Write-Host "  Scanning: $($group.Name)  ✓" -ForegroundColor Green
+                        if ($highProblems.Count -gt 0) {
+                            if ($isSuppressed) {
+                                continue
                             }
+
+                            Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
+                            foreach ($r in $highProblems) {
+                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
+                                Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
+                            }
+                            foreach ($r in $mediumProblems) {
+                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
+                                Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
+                            }
+                        } elseif ($mediumProblems.Count -gt 0) {
+                            if ($isSuppressed) {
+                                continue
+                            }
+
+                            Write-Host "  Scanning: $($group.Name)  ⚠" -ForegroundColor Yellow
+                            foreach ($r in $mediumProblems) {
+                                Write-Host "    ⚠ [$scannerName] $($r.Indicator)" -ForegroundColor Yellow
+                                Write-Host "      $($r.Evidence)" -ForegroundColor Yellow
+                            }
+                        } else {
+                            Write-Host "  Scanning: $($group.Name)  ✓" -ForegroundColor Green
                         }
                     }
+
+                    Restore-ProgressLine
 
                     foreach ($r in $results) {
                         if (-not $r.PSObject.Properties['Drive']) {
@@ -626,12 +676,13 @@ foreach ($drive in $targetDrives) {
                 })
 
                 Write-Host "  Scanner error in ${folder}: $($_.Exception.Message)" -ForegroundColor DarkGray
+                Restore-ProgressLine
             }
         }
     }
 }
 
-Clear-ProgressLine
+Reset-ProgressLine
 
 $sortedFindings = $allFindings | Sort-Object `
     @{ Expression = { Get-SeveritySortValue $_.Severity } }, `
