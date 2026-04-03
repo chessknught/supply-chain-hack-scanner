@@ -16,6 +16,7 @@ $ScannerScripts = @(
     ".\scanners\scan-for-lifecycle-script-abuse.ps1"
     ".\scanners\scan-for-suspicious-domains.ps1"
     ".\scanners\scan-for-typosquat-packages.ps1"
+    ".\scanners\scan-for-dependency-confusion.ps1"
     # ".\scanners\scan-other-thing.ps1"
 )
 
