@@ -40,6 +40,7 @@ $ErrorActionPreference = 'Continue'
 $ScannerScripts = @(
     ".\scanners\scan-for-axios-hack.ps1"
     ".\scanners\scan-for-lifecycle-script-abuse.ps1"
+    ".\scanners\scan-for-obfuscation-staged-loaders.ps1"
     ".\scanners\scan-for-suspicious-domains.ps1"
     ".\scanners\scan-for-typosquat-packages.ps1"
     ".\scanners\scan-for-dependency-confusion.ps1"

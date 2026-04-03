@@ -73,6 +73,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCANNER_SCRIPTS=(
     "$SCRIPT_DIR/scanners/scan-for-axios-hack.sh"
     "$SCRIPT_DIR/scanners/scan-for-lifecycle-script-abuse.sh"
+    "$SCRIPT_DIR/scanners/scan-for-obfuscation-staged-loaders.sh"
     "$SCRIPT_DIR/scanners/scan-for-suspicious-domains.sh"
     "$SCRIPT_DIR/scanners/scan-for-typosquat-packages.sh"
     "$SCRIPT_DIR/scanners/scan-for-dependency-confusion.sh"
