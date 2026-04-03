@@ -53,18 +53,20 @@ TARGET_EXTENSIONS=(
 
 LIFECYCLE_KEYS=(preinstall install postinstall prepare prepublish prepublishOnly prepack postpack)
 
+_home_ref='\\$home|\\$\{?home\}?'
+
 SENSITIVE_PATH_RULES=(
-    "2|npm credential file path|(^|[^a-z0-9_])(~|\\$home|\\$\{?home\}?|%userprofile%)[/\\]\\.npmrc($|[^a-z0-9_])|(^|[^a-z0-9_])\\.npmrc($|[^a-z0-9_])"
-    "2|Python publish credential path|(^|[^a-z0-9_])(~|\\$home|\\$\{?home\}?|%userprofile%)[/\\]\\.pypirc($|[^a-z0-9_])|(^|[^a-z0-9_])\\.pypirc($|[^a-z0-9_])"
-    "2|netrc credential path|(^|[^a-z0-9_])(~|\\$home|\\$\{?home\}?|%userprofile%)[/\\]\\.netrc($|[^a-z0-9_])|(^|[^a-z0-9_])\\.netrc($|[^a-z0-9_])"
-    "2|git credential store path|(^|[^a-z0-9_])(~|\\$home|\\$\{?home\}?|%userprofile%)[/\\]\\.git-credentials($|[^a-z0-9_])|(^|[^a-z0-9_])\\.git-credentials($|[^a-z0-9_])"
-    "2|SSH credential store path|(~|\\$home|\\$\{?home\}?|%userprofile%)[/\\]\\.ssh([/\\]|$)|authorized_keys|known_hosts|id_rsa|id_ed25519"
-    "2|AWS credential store path|(~|\\$home|\\$\{?home\}?|%userprofile%)[/\\]\\.aws([/\\](credentials|config))?"
-    "2|Azure credential store path|(~|\\$home|\\$\{?home\}?|%userprofile%)[/\\]\\.azure([/\\]|$)|%appdata%[/\\]azure"
-    "2|GCP credential store path|(~|\\$home|\\$\{?home\}?|%userprofile%)[/\\]\\.config[/\\]gcloud([/\\]|$)|google[/\\]cloud"
+    "2|npm credential file path|(^|[^a-z0-9_])(~|${_home_ref}|%userprofile%)[/\\]\\.npmrc($|[^a-z0-9_])|(^|[^a-z0-9_])\\.npmrc($|[^a-z0-9_])"
+    "2|Python publish credential path|(^|[^a-z0-9_])(~|${_home_ref}|%userprofile%)[/\\]\\.pypirc($|[^a-z0-9_])|(^|[^a-z0-9_])\\.pypirc($|[^a-z0-9_])"
+    "2|netrc credential path|(^|[^a-z0-9_])(~|${_home_ref}|%userprofile%)[/\\]\\.netrc($|[^a-z0-9_])|(^|[^a-z0-9_])\\.netrc($|[^a-z0-9_])"
+    "2|git credential store path|(^|[^a-z0-9_])(~|${_home_ref}|%userprofile%)[/\\]\\.git-credentials($|[^a-z0-9_])|(^|[^a-z0-9_])\\.git-credentials($|[^a-z0-9_])"
+    "2|SSH credential store path|(~|${_home_ref}|%userprofile%)[/\\]\\.ssh([/\\]|$)|authorized_keys|known_hosts|id_rsa|id_ed25519"
+    "2|AWS credential store path|(~|${_home_ref}|%userprofile%)[/\\]\\.aws([/\\](credentials|config))?"
+    "2|Azure credential store path|(~|${_home_ref}|%userprofile%)[/\\]\\.azure([/\\]|$)|%appdata%[/\\]azure"
+    "2|GCP credential store path|(~|${_home_ref}|%userprofile%)[/\\]\\.config[/\\]gcloud([/\\]|$)|google[/\\]cloud"
     "2|VS Code global storage path|%appdata%[/\\]code[/\\]user[/\\]globalstorage"
     "2|Kubernetes credential path|(^|[^a-z0-9_])(kubeconfig|\\.kube[/\\]config)($|[^a-z0-9_])"
-    "2|Docker credential config path|(~|\\$home|\\$\{?home\}?|%userprofile%)[/\\]\\.docker[/\\]config\\.json"
+    "2|Docker credential config path|(~|${_home_ref}|%userprofile%)[/\\]\\.docker[/\\]config\\.json"
     "2|browser secret storage path|login data|cookies|local state|google[/\\]chrome[/\\]user data|chromium[/\\]user data|firefox[/\\]profiles"
 )
 
