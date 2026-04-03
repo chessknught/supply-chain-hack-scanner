@@ -93,6 +93,8 @@ RESET=$'\033[0m'
 CURRENT_PROGRESS_TEXT=""
 TTY_AVAILABLE=false
 TTY_FD=""
+PROGRESS_SCROLL_REGION_ACTIVE=false
+PROGRESS_ROWS=0
 
 if [[ -t 1 ]] && [[ -e /dev/tty ]] && exec {TTY_FD}>/dev/tty 2>/dev/null; then
     TTY_AVAILABLE=true
@@ -122,17 +124,34 @@ get_progress_rows() {
     printf '%s\n' "$rows"
 }
 
+ensure_progress_overlay() {
+    $TTY_AVAILABLE || return 0
+
+    local rows
+    rows=$(get_progress_rows)
+    (( rows >= 4 )) || return 0
+
+    if [[ "$PROGRESS_ROWS" != "$rows" ]] || ! $PROGRESS_SCROLL_REGION_ACTIVE; then
+        printf '\033[r' >&$TTY_FD 2>/dev/null || true
+        printf '\033[1;%sr' "$(( rows - 1 ))" >&$TTY_FD 2>/dev/null || true
+        PROGRESS_ROWS="$rows"
+        PROGRESS_SCROLL_REGION_ACTIVE=true
+    fi
+}
+
 render_progress() {
     local text="$1"
     $TTY_AVAILABLE || return 0
     [[ -z "$text" ]] && return 0
 
-    local cols rows msg padded
+    ensure_progress_overlay
+    [[ "$PROGRESS_ROWS" -gt 0 ]] || return 0
+
+    local cols msg padded
     cols=$(get_progress_columns)
-    rows=$(get_progress_rows)
     msg="${text:0:$(( cols - 3 ))}"
     printf -v padded "%-$(( cols - 2 ))s" "$msg"
-    printf '\033[s\033[%s;1H\033[2K\033[44;1;97m%s\033[0m\033[u' "$rows" "$padded" >&$TTY_FD 2>/dev/null || true
+    printf '\033[s\033[%s;1H\033[2K\033[44;1;97m%s\033[0m\033[u' "$PROGRESS_ROWS" "$padded" >&$TTY_FD 2>/dev/null || true
 }
 
 show_progress() {
@@ -142,9 +161,9 @@ show_progress() {
 
 clear_progress() {
     $TTY_AVAILABLE || return 0
-    local rows
-    rows=$(get_progress_rows)
-    printf '\033[s\033[%s;1H\033[2K\033[u' "$rows" >&$TTY_FD 2>/dev/null || true
+    ensure_progress_overlay
+    [[ "$PROGRESS_ROWS" -gt 0 ]] || return 0
+    printf '\033[s\033[%s;1H\033[2K\033[u' "$PROGRESS_ROWS" >&$TTY_FD 2>/dev/null || true
 }
 
 restore_progress() {
@@ -155,6 +174,16 @@ restore_progress() {
 reset_progress() {
     clear_progress
     CURRENT_PROGRESS_TEXT=""
+}
+
+teardown_progress_overlay() {
+    $TTY_AVAILABLE || return 0
+    clear_progress
+    if $PROGRESS_SCROLL_REGION_ACTIVE; then
+        printf '\033[r' >&$TTY_FD 2>/dev/null || true
+        PROGRESS_SCROLL_REGION_ACTIVE=false
+        PROGRESS_ROWS=0
+    fi
 }
 
 show_header() {
@@ -617,8 +646,7 @@ for mount in "${active_mounts[@]}"; do
 
             if bash "$scanner" "$folder" "$VERBOSITY" >"$tmpfile" 2>/dev/null; then
                 [[ -s "$tmpfile" ]] || continue
-
-                clear_progress
+                restore_progress
 
                 # Get unique file paths reported in this scanner pass
                 mapfile -t file_paths < <(jq -r '.path' "$tmpfile" 2>/dev/null | sort -u)
@@ -632,17 +660,13 @@ for mount in "${active_mounts[@]}"; do
                         "$tmpfile" 2>/dev/null | wc -l | tr -d ' ')
 
                     if (( high_count > 0 )); then
-                        if $_is_suppressed; then
-                            continue
+                        if ! $_is_suppressed; then
+                            printf "  ${YELLOW}Scanning: %s  ⚠${RESET}\n" "$fpath"
                         fi
-
-                        printf "  ${YELLOW}Scanning: %s  ⚠${RESET}\n" "$fpath"
                     elif (( medium_count > 0 )); then
-                        if $_is_suppressed; then
-                            continue
+                        if ! $_is_suppressed; then
+                            printf "  ${YELLOW}Scanning: %s  ⚠${RESET}\n" "$fpath"
                         fi
-
-                        printf "  ${YELLOW}Scanning: %s  ⚠${RESET}\n" "$fpath"
                     else
                         printf "  ${GREEN}Scanning: %s  ✓${RESET}\n" "$fpath"
                     fi
@@ -667,6 +691,8 @@ for mount in "${active_mounts[@]}"; do
                         done < <(jq -c --arg p "$fpath" 'select(.path==$p)' "$tmpfile" 2>/dev/null)
                     fi
 
+                    restore_progress
+
                     # Augment every finding with mount + scanner and store (regardless of suppression)
                     while IFS= read -r finding_json; do
                         [[ -z "$finding_json" ]] && continue
@@ -678,16 +704,20 @@ for mount in "${active_mounts[@]}"; do
                         all_findings+=("$augmented")
                     done < <(jq -c --arg p "$fpath" 'select(.path==$p)' "$tmpfile" 2>/dev/null)
                 done
+
+                restore_progress
             else
-                clear_progress
                 scanner_errors+=("$mount|$folder|$scanner_name|Scanner returned non-zero exit")
                 printf "  ${GRAY}Scanner error in %s${RESET}\n" "$folder"
+                restore_progress
             fi
         done
     done < <("${find_cmd[@]}" 2>/dev/null)
 
     clear_progress
 done
+
+teardown_progress_overlay
 
 # ── Findings table ────────────────────────────────────────────────────────────
 echo ""
