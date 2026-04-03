@@ -192,6 +192,35 @@ Searches for local signs that a project may be exposed to dependency confusion. 
 
 This scanner covers a broad set of ecosystems and file types, including npm (`package.json`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`), Python (`requirements.txt`, `pyproject.toml`, `Pipfile`, `poetry.lock`, `setup.py`), Go (`go.mod`), Rust (`Cargo.toml`), Ruby (`Gemfile`), .NET (`packages.config`, `Directory.Packages.props`, `paket.dependencies`), and Java/Gradle manifests.
 
+### scan-for-credential-theft-behavior
+
+Looks for local heuristics that suggest credential harvesting, token collection, secret packaging, or likely exfiltration behavior. It focuses on project files and scripts that reference credential stores, environment secrets, archive or encode secret material, and then send or execute it.
+
+| Detection Group | Typical Severity | Notes |
+|---|---|---|
+| Secret-store or secret-env references only | Info | Examples: `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, cloud credential paths, well-known token env vars |
+| Secret access plus packaging or encoding | Medium | Examples: reading secret files, enumerating env vars, archiving or Base64-encoding likely secret material |
+| Secret access plus outbound transfer | HIGH | Escalates when sensitive credential access is paired with `curl`, `wget`, webhook endpoints, HTTP clients, or file-transfer utilities |
+| Secret collection plus execution helpers | Medium or HIGH | Process launch, inline shell execution, or hidden execution increases confidence when combined with collection logic |
+| Lifecycle/build script handling secrets suspiciously | HIGH | `package.json` lifecycle hooks and build files score higher when they combine secret access with packaging or outbound behavior |
+
+The scanner inspects `package.json`, lockfiles, `.npmrc`, `.env*`, Docker and CI files, and common script/source file types. It also attempts to capture package name and version from `package.json` when present.
+
+### scan-for-obfuscation-staged-loaders
+
+Detects local indicators of obfuscation, encoded payloads, staged loaders, downloader chains, hidden execution, and temp-file staging. It is designed for triage rather than definitive malware classification, using weighted signals and severity escalation when strong combinations occur in the same file.
+
+| Detection Group | Typical Severity | Notes |
+|---|---|---|
+| Encoded or packed payload markers | Info or Medium | Examples: Base64 decode helpers, `atob`, `Buffer.from(..., base64)`, `certutil -decode`, `powershell -enc`, long Base64 or hex blobs |
+| Dynamic or reflective execution | Medium | Examples: `eval`, `new Function`, `Invoke-Expression`, `exec`, `spawn`, `child_process`, `os.system`, `Process.Start`, `bash -c`, `python -c` |
+| Downloader or remote script execution | HIGH | Examples: `curl` or `wget` piped into a shell, `Invoke-WebRequest ... | iex`, fetch or request responses executed immediately |
+| Temp-file staging plus execution | Medium or HIGH | Examples: writes to `/tmp`, `%TEMP%`, or `AppData\Local\Temp`, followed by `chmod +x`, rename, move, or launch behavior |
+| Hidden or stealthy execution | Medium or HIGH | Examples: hidden window flags, detached background launch, persistence helpers, or stealth wording combined with execution or download behavior |
+| Rebuilt commands, URLs, or staged-flow wording | Info or Medium | Examples: fragmented string assembly, array joins, disguised `hxxp` URLs, `loader`, `stager`, `bootstrap`, `payload`, or `stage1/stage2` terms |
+
+The scanner covers `package.json`, lockfiles, `.npmrc`, `.env*`, Docker and build files, and a broad set of script and source extensions including JavaScript, TypeScript, Python, shell, PowerShell, .NET, Go, YAML, and JSON. Severity increases when encoding, dynamic execution, downloader logic, staging, or hidden execution appear together in the same file.
+
 ## Adding a New Scanner
 
 1. Create `scanners/my-scanner.ps1` (and/or `scanners/my-scanner.sh`)

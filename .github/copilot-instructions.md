@@ -13,20 +13,20 @@ YYYY.M.D-build<N>
 ```
 
 - `YYYY.M.D` — today's date (no zero-padding on month or day)
-- `build<N>` — integer build counter, starting at 1 on a new date; incremented by 1 for each change made on the same date
+- `build<N>` — integer build counter that is always incremented from the current `VERSION`, regardless of date changes
 
 Examples:
 ```
 2026.4.2-build1
 2026.4.2-build2
-2026.5.1-build1
+2026.5.1-build3
 ```
 
 ### Rules
 
 1. Read the current `VERSION` file before deciding the new version.
-2. If the date portion matches today, increment the build number.
-3. If the date portion is earlier than today, reset the build number to 1 and update the date.
+2. Set the date portion to today.
+3. Increment the existing build number by 1, even if the date portion changes.
 4. Write the new version string (with a trailing newline) back to `VERSION`.
 5. Never skip this step — even for whitespace-only or comment-only changes.
 
