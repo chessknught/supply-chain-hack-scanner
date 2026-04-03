@@ -78,6 +78,7 @@ SCANNER_SCRIPTS=(
     "$SCRIPT_DIR/scanners/scan-for-typosquat-packages.sh"
     "$SCRIPT_DIR/scanners/scan-for-dependency-confusion.sh"
     "$SCRIPT_DIR/scanners/scan-for-credential-theft-behavior.sh"
+    "$SCRIPT_DIR/scanners/scan-for-vscode-extension-risks.sh"
 )
 EXCLUDED_DIR_NAMES=('$Recycle.Bin' 'System Volume Information')
 
